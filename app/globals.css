@@ -42,3 +42,13 @@
 @media(max-width:650px){input,textarea,select{font-size:16px!important}}
 .player-wait section>p{margin:28px 0 0}
 @media(max-width:650px){.player-wait section>p{margin-top:32px}}
+
+/* Keep gameplay controls clear of the fixed credit and give result copy breathing room. */
+.player-result section>p{max-width:min(560px,calc(100vw - 40px));margin:30px 20px 0;line-height:1.65}
+@media(max-width:650px){
+  .touch-controls{bottom:calc(42px + env(safe-area-inset-bottom,0px));z-index:20}
+  .mana-hud{bottom:calc(128px + env(safe-area-inset-bottom,0px))}
+  .product-credit{bottom:calc(7px + env(safe-area-inset-bottom,0px))}
+  .player-result section{padding:20px 20px calc(42px + env(safe-area-inset-bottom,0px))}
+  .player-result section>p{margin-top:30px;line-height:1.7}
+}
