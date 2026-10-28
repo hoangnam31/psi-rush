@@ -27,6 +27,9 @@ const COURSE_W = 1600;
 const START_LINE = 230;
 const PLAYER_R = 38;
 const CHECKPOINTS = [80, 2500, 5000, 7500];
+const JUMP_SPEED = 650;
+const GRAVITY = 1450;
+const PIT_LENGTH = 180;
 
 function mapSeed(id: string) {
   return [...id].reduce((sum, char) => sum + char.charCodeAt(0), 0);
@@ -73,7 +76,8 @@ function buildCourse(id: string) {
       obstacles.push({ x: 680, y: y + 500, w: 240, h: 100, kind: "pad", color: "#b6f43b" });
     }
     if (zone % 4 === 0) {
-      pits.push({ x: 210 + (seed * zone * 23) % 900, y: y + 510, w: 300, h: 220 });
+      const pitY = y + (zone % 3 === 0 ? 680 : 535);
+      pits.push({ x: 210 + (seed * zone * 23) % 900, y: pitY, w: 330, h: PIT_LENGTH });
     }
   }
   return { obstacles, spinners, pits };
@@ -108,6 +112,7 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
     let lastImpact = 0;
     let shake = 0;
     let renderScale = .6;
+    let cameraX = COURSE_W / 2;
     let cameraY = 80;
     let finished = false;
     const readyAt = performance.now() + 3000;
@@ -165,7 +170,7 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
       const nearY = Math.max(obstacle.y, Math.min(p.y, obstacle.y + obstacle.h));
       let dx = p.x - nearX, dy = p.y - nearY;
       const distance = Math.hypot(dx, dy);
-      if (distance >= PLAYER_R || p.z >= 58) return false;
+      if (distance >= PLAYER_R) return false;
 
       let nx = 0, ny = 0, penetration = 0;
       if (distance > .001) {
@@ -203,7 +208,7 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
       const radius = obstacle.w / 2;
       const cx = obstacleX + radius, cy = obstacle.y + radius;
       const dx = p.x - cx, dy = p.y - cy, distance = Math.hypot(dx, dy) || 1;
-      if (distance > radius + PLAYER_R || p.z > 68 || p.hitCd > 0) return;
+      if (distance > radius + PLAYER_R || p.hitCd > 0) return;
       const overlap = radius + PLAYER_R - distance;
       p.x += dx / distance * (overlap + 2); p.y += dy / distance * (overlap + 2);
       p.vx = dx / distance * 760;
@@ -228,16 +233,22 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
         if (other.id === me.id || other.progress >= 100) continue;
         const otherY = other.progress / 100 * COURSE;
         const otherX = 150 + hash(other.id) % (COURSE_W - 300);
-        const dx = p.x - otherX, dy = p.y - otherY;
-        const distance = Math.hypot(dx, dy) || 1;
-        if (distance < 66 && p.z < 45 && p.stun < .18) {
-          p.vx += dx / distance * 250;
-          p.vy *= .72;
-          p.stun = .16;
-          shake = .24;
+        let dx = p.x - otherX, dy = p.y - otherY;
+        let distance = Math.hypot(dx, dy);
+        if (distance >= PLAYER_R * 2) continue;
+        if (distance < .001) {
+          const angle = hash(`${me.id}:${other.id}`) / 0xffffffff * Math.PI * 2;
+          dx = Math.cos(angle); dy = Math.sin(angle); distance = 1;
+        }
+        const nx = dx / distance, ny = dy / distance;
+        const overlap = PLAYER_R * 2 - distance;
+        p.x += nx * (overlap + 1.5); p.y += ny * (overlap + 1.5);
+        const inward = p.vx * nx + p.vy * ny;
+        if (inward < 0) { p.vx -= inward * nx; p.vy -= inward * ny; }
+        if (p.hitCd <= 0) {
+          p.vx += nx * 135; p.vy += ny * 135; p.stun = .1; p.hitCd = .12; shake = .2;
           burst((p.x + otherX) / 2, (p.y + otherY) / 2, "#ffffff", 5);
           showImpact("BUMP!", now);
-          break;
         }
       }
     }
@@ -255,7 +266,7 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
     function respawn(now: number) {
       p.x = COURSE_W / 2; p.y = p.checkpoint + 45; p.vx = 0; p.vy = 0; p.z = 0; p.vz = 0;
       p.falling = false; p.fallTime = 0; p.stun = .55; p.hitCd = .8;
-      cameraY = p.y;
+      cameraX = p.x; cameraY = p.y;
       progressCb.current(Math.min(99.8, p.y / COURSE * 100));
       burst(p.x, p.y, "#8df6ff", 20); showImpact("HỒI SINH!", now);
     }
@@ -278,7 +289,7 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
         p.fallTime += dt;
         p.x += p.vx * dt; p.y += p.vy * dt;
         p.z -= (260 + p.fallTime * 520) * dt;
-        cameraY += (p.y - cameraY) * Math.min(1, dt * 4.5);
+        cameraX = p.x; cameraY = p.y;
         if (p.fallTime >= 1.05) respawn(now);
       } else {
 
@@ -288,7 +299,7 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
         if (inputLength > 1) { ix /= inputLength; iy /= inputLength; }
         if (input.current.jump && p.z <= 1 && p.stun <= .2) {
           if (p.mana >= 25) {
-            p.vz = 650;
+            p.vz = JUMP_SPEED;
             p.mana -= 25;
             p.lastJump = now;
             burst(p.x, p.y, "#8df6ff", 7);
@@ -311,7 +322,7 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
         const speed = Math.hypot(p.vx, p.vy);
         if (speed > maxSpeed) { p.vx = p.vx / speed * maxSpeed; p.vy = p.vy / speed * maxSpeed; }
         p.x += p.vx * dt; p.y += p.vy * dt;
-        p.vz -= 1450 * dt; p.z += p.vz * dt;
+        p.vz -= GRAVITY * dt; p.z += p.vz * dt;
         if (p.z < 0) { p.z = 0; p.vz = 0; }
         p.y = Math.max(-120, p.y);
 
@@ -351,7 +362,7 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
           }
         }
         if (p.x < -PLAYER_R * 1.5 || p.x > COURSE_W + PLAYER_R * 1.5 || p.y < -80 || (p.z < 48 && isInsidePit())) beginFall(now);
-        cameraY += (p.y - cameraY) * Math.min(1, dt * 5.5);
+        cameraX = p.x; cameraY = p.y;
       }
 
       if (![p.x, p.y, p.vx, p.vy, p.z, p.vz].every(Number.isFinite)) respawn(now);
@@ -380,13 +391,13 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
     function draw(now: number) {
       const rect = canvas!.getBoundingClientRect();
       const w = rect.width, h = rect.height;
-      const baseScale = Math.max(.43, Math.min(.74, w / 1480));
+      const baseScale = Math.max(.5, Math.min(.78, w / 1800));
       renderScale = baseScale;
-      const playerScreenY = h * .79;
+      const playerScreenY = h * .73;
       const raceSeconds = start ? (now - start) / 1000 : 0;
       const sy = (worldY: number) => playerScreenY - (worldY - cameraY) * baseScale;
-      const perspective = (worldY: number) => Math.max(.34, Math.min(1.08, .34 + sy(worldY) / h * .82));
-      const sx = (worldX: number, worldY: number) => w / 2 + (worldX - COURSE_W / 2) * baseScale * perspective(worldY);
+      const perspective = (_worldY: number) => 1;
+      const sx = (worldX: number, _worldY: number) => w / 2 + (worldX - cameraX) * baseScale;
 
       ctx.clearRect(0, 0, w, h);
       ctx.save();
@@ -421,7 +432,7 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
         .filter((other) => sy(other.worldY) > -90 && sy(other.worldY) < h + 100)
         .sort((a, b) => b.worldY - a.worldY);
       for (const other of visiblePlayers) {
-        const scale = 28 * baseScale * perspective(other.worldY);
+        const scale = 35 * baseScale;
         drawBean(ctx, sx(other.worldX, other.worldY), sy(other.worldY), scale, other.color, other.name, .9, raceSeconds, false, 0);
       }
 
@@ -435,7 +446,7 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
       ctx.globalAlpha = 1;
       const fallScale = p.falling ? Math.max(.22, 1 - p.fallTime * .66) : 1;
       const fallAlpha = p.falling ? Math.max(.22, 1 - p.fallTime * .7) : 1;
-      const playerScale = 35 * baseScale * perspective(p.y) * fallScale;
+      const playerScale = 35 * baseScale * fallScale;
       drawBean(ctx, sx(p.x, p.y), sy(p.y) - p.z * baseScale, playerScale, me.color, me.name, fallAlpha, raceSeconds, true, p.stun);
       ctx.restore();
 
@@ -584,15 +595,22 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
     ) {
       const scale = perspective(obstacle.y);
       const left = sx(obstacleX, obstacle.y), right = sx(obstacleX + obstacle.w, obstacle.y);
-      const ground = sy(obstacle.y), depth = Math.max(13, obstacle.h * .26 * scale), rise = Math.max(22, obstacle.h * .68 * scale);
+      const nearY = sy(obstacle.y), farY = sy(obstacle.y + obstacle.h);
+      const rise = Math.max(26, 48 * renderScale);
       const topColor = colorMix(obstacle.color, "#ffffff", .28), sideColor = colorMix(obstacle.color, "#000000", .23);
-      context.fillStyle = "rgba(13,4,38,.25)"; context.beginPath(); context.ellipse((left + right) / 2 + 6, ground + 10, (right - left) * .55, depth * .45, 0, 0, Math.PI * 2); context.fill();
-      context.fillStyle = obstacle.color; context.beginPath(); context.roundRect(left, ground - rise, right - left, rise, 10 * scale); context.fill();
-      context.fillStyle = sideColor; context.beginPath(); context.moveTo(right, ground - rise); context.lineTo(right + depth, ground - rise - depth); context.lineTo(right + depth, ground - depth); context.lineTo(right, ground); context.closePath(); context.fill();
-      context.fillStyle = topColor; context.beginPath(); context.moveTo(left, ground - rise); context.lineTo(left + depth, ground - rise - depth); context.lineTo(right + depth, ground - rise - depth); context.lineTo(right, ground - rise); context.closePath(); context.fill();
-      context.fillStyle = "rgba(255,255,255,.38)"; context.fillRect(left + 10 * scale, ground - rise + 9 * scale, Math.max(0, right - left - 20 * scale), 7 * scale);
+      context.fillStyle = "rgba(13,4,38,.28)";
+      context.fillRect(left + 7, farY + 7, Math.max(0, right - left), Math.max(5, nearY - farY));
+      context.fillStyle = obstacle.color;
+      context.beginPath(); context.moveTo(left, nearY); context.lineTo(right, nearY); context.lineTo(right, nearY - rise); context.lineTo(left, nearY - rise); context.closePath(); context.fill();
+      context.fillStyle = sideColor;
+      context.beginPath(); context.moveTo(right, nearY); context.lineTo(right, farY); context.lineTo(right, farY - rise); context.lineTo(right, nearY - rise); context.closePath(); context.fill();
+      context.fillStyle = topColor;
+      context.beginPath(); context.moveTo(left, nearY - rise); context.lineTo(right, nearY - rise); context.lineTo(right, farY - rise); context.lineTo(left, farY - rise); context.closePath(); context.fill();
+      context.strokeStyle = "rgba(255,255,255,.72)"; context.lineWidth = Math.max(2, 3 * renderScale);
+      context.strokeRect(left, farY - rise, Math.max(0, right - left), Math.max(0, nearY - farY));
+      context.fillStyle = "rgba(255,255,255,.38)"; context.fillRect(left + 10 * scale, nearY - rise + 8 * scale, Math.max(0, right - left - 20 * scale), 6 * scale);
       if (obstacle.kind === "mover") {
-        context.fillStyle = "#ffffff"; context.font = `900 ${Math.max(8, 17 * scale)}px system-ui`; context.textAlign = "center"; context.fillText("⇆", (left + right) / 2, ground - rise * .38);
+        context.fillStyle = "#ffffff"; context.font = `900 ${Math.max(8, 17 * scale)}px system-ui`; context.textAlign = "center"; context.fillText("⇆", (left + right) / 2, nearY - rise * .35);
       }
     }
 
@@ -629,7 +647,7 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
       sx: (x: number, y: number) => number, sy: (y: number) => number, perspective: (y: number) => number,
     ) {
       const angle = time * spinner.speed + spinner.phase, scale = renderScale * perspective(spinner.y);
-      const x = sx(spinner.x, spinner.y), y = sy(spinner.y), dx = Math.cos(angle) * spinner.len * scale, dy = -Math.sin(angle) * spinner.len * scale * .72;
+      const x = sx(spinner.x, spinner.y), y = sy(spinner.y), dx = Math.cos(angle) * spinner.len * scale, dy = -Math.sin(angle) * spinner.len * scale;
       context.strokeStyle = "rgba(12,4,35,.25)"; context.lineWidth = 34 * scale; context.lineCap = "round"; context.beginPath(); context.moveTo(x - dx + 7, y - dy + 9); context.lineTo(x + dx + 7, y + dy + 9); context.stroke();
       const bar = context.createLinearGradient(x - dx, y - dy, x + dx, y + dy); bar.addColorStop(0, colorMix(spinner.color, "#000000", .18)); bar.addColorStop(.5, spinner.color); bar.addColorStop(1, colorMix(spinner.color, "#ffffff", .25));
       context.strokeStyle = bar; context.lineWidth = 30 * scale; context.beginPath(); context.moveTo(x - dx, y - dy); context.lineTo(x + dx, y + dy); context.stroke();
