@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { WobbleLogo } from "../../components/WobbleLogo";
 import { Bean } from "../../components/Bean";
 import { RoomTrack } from "../../components/RoomTrack";
-import { COLORS, MAPS } from "../../lib/game";
+import { COLORS, getMapMode, MAPS } from "../../lib/game";
 import { getRoomState, roomAction, type RoomState } from "../../lib/types";
 
 type HostSession = { code: string; hostToken: string };
@@ -56,7 +56,8 @@ export default function HostPage() {
   if(!state) return <main className="loading-shell"><div className="loader-bean"/><p>ĐANG MỞ PHÒNG {session.code}...</p>{error&&<button onClick={leave}>Tạo phòng khác</button>}</main>;
   const {room,players,results}=state;
   const currentResults=results.filter(r=>r.roundNumber===room.currentRound);
-  const ranked=[...players].sort((a,b)=>b.score-a.score||b.progress-a.progress);
+  const mode=getMapMode(room.currentMap);
+  const ranked=[...players].sort((a,b)=>mode==="survival"&&room.status==="racing"?((a.finishPosition?1:0)-(b.finishPosition?1:0)||(a.finishPosition??0)-(b.finishPosition??0)):b.score-a.score||b.progress-a.progress);
   const joinUrl=typeof location!=="undefined"?`${location.origin}/join?room=${room.code}`:"";
   return <main className="admin-shell">
     <header className="admin-topbar"><WobbleLogo compact/><div className="admin-room"><small>ROOM CODE</small><b>{room.code}</b><button onClick={()=>navigator.clipboard.writeText(joinUrl)}>COPY LINK</button></div><div className="admin-status"><i className={room.status}/><span>ROUND {room.currentRound || 0}/{room.totalRounds}</span><b>{players.length}/{room.maxPlayers}</b><button className="icon-btn" onClick={leave}>×</button></div></header>
@@ -65,20 +66,20 @@ export default function HostPage() {
       <aside className="lobby-roster"><div className="section-head"><div><small>PLAYERS</small><h3>ĐÃ THAM GIA</h3></div><b>{players.length}<i>/{room.maxPlayers}</i></b></div><div className="roster-grid">{players.map((p,i)=><div className="roster-player" key={p.id}><Bean color={p.color} size="sm"/><span><b>{p.name}</b><small>{p.isReady?"SẴN SÀNG":"ĐANG CHỜ"}</small></span><i>{String(i+1).padStart(2,"0")}</i></div>)}{!players.length&&<div className="empty-roster">Chưa có ai trong phòng.<br/>Hãy chiếu mã QR lên màn hình lớn!</div>}</div><button className="start-btn" disabled={!players.length||busy} onClick={()=>act("start")}>BẮT ĐẦU ROUND 1 <span>▶</span></button></aside>
     </section>}
     {room.status==="racing"&&<section className="race-admin-grid">
-      <div className="spectator-panel"><div className="panel-title"><div><small>LIVE SPECTATOR</small><h2>TOÀN CẢNH ĐƯỜNG ĐUA</h2></div><span className="live-badge"><i/> LIVE</span></div><RoomTrack players={players} mapId={room.currentMap}/><div className="race-actions"><button className="danger-action" disabled={busy} onClick={()=>act("endRound")}>CHỐT KẾT QUẢ ROUND</button></div></div>
-      <Leaderboard players={ranked} currentResults={currentResults} title="XẾP HẠNG TRỰC TIẾP"/>
+      <div className="spectator-panel"><div className="panel-title"><div><small>LIVE SPECTATOR</small><h2>{mode==="survival"?"TOÀN CẢNH SINH TỒN":"TOÀN CẢNH ĐƯỜNG ĐUA"}</h2></div><span className="live-badge"><i/> LIVE</span></div><RoomTrack players={players} mapId={room.currentMap}/><div className="race-actions"><button className="danger-action" disabled={busy} onClick={()=>act("endRound")}>CHỐT KẾT QUẢ ROUND</button></div></div>
+      <Leaderboard players={ranked} currentResults={currentResults} title="XẾP HẠNG TRỰC TIẾP" mode={mode}/>
     </section>}
     {(room.status==="results"||room.status==="finished")&&<section className="results-admin">
       <div className="results-hero"><span className="eyebrow">{room.status==="finished"?"GIẢI ĐẤU KẾT THÚC":`KẾT QUẢ ROUND ${room.currentRound}`}</span><h2>{room.status==="finished"?"NHÀ VÔ ĐỊCH":"ROUND COMPLETE!"}</h2><Podium players={ranked}/><div className="result-actions">{room.status!=="finished"&&room.currentRound<room.totalRounds&&<button className="primary-action" onClick={()=>act("next")}>ROUND TIẾP THEO →</button>}{room.status!=="finished"&&<button className="secondary-action" onClick={()=>act("finishGame")}>KẾT THÚC GAME</button>}{room.status==="finished"&&<><button className="secondary-action" onClick={()=>act("reset")}>CHƠI LẠI CÙNG NHÓM ↻</button><button className="primary-action" onClick={createFreshRoom}>TẠO PHÒNG MỚI ＋</button></>}</div></div>
-      <Leaderboard players={ranked} currentResults={currentResults} title="BẢNG ĐIỂM TỔNG"/>
+      <Leaderboard players={ranked} currentResults={currentResults} title="BẢNG ĐIỂM TỔNG" mode={mode}/>
     </section>}
     {error&&<div className="error-toast">{error}</div>}
   </main>;
 }
 
-function Leaderboard({players,currentResults,title}:{players:RoomState["players"];currentResults:RoomState["results"];title:string}){
+function Leaderboard({players,currentResults,title,mode}:{players:RoomState["players"];currentResults:RoomState["results"];title:string;mode:"race"|"survival"}){
   const points=new Map(currentResults.map(r=>[r.playerId,r.points]));
-  return <aside className="leaderboard"><div className="section-head"><div><small>LEADERBOARD</small><h3>{title}</h3></div><span>PTS</span></div><div className="leader-list">{players.map((p,i)=><div className={`leader-row ${i<3?`top top-${i+1}`:""}`} key={p.id}><b className="rank-no">{i+1}</b><span className="color-dot" style={{background:p.color}}/><div><b>{p.name}</b><small>{p.finishPosition?`Về đích #${p.finishPosition}`:`${Math.round(p.progress)}% đường đua`}</small></div>{points.has(p.id)&&<em>+{points.get(p.id)}</em>}<strong>{p.score}</strong></div>)}</div></aside>
+  return <aside className="leaderboard"><div className="section-head"><div><small>LEADERBOARD</small><h3>{title}</h3></div><span>PTS</span></div><div className="leader-list">{players.map((p,i)=><div className={`leader-row ${i<3?`top top-${i+1}`:""}`} key={p.id}><b className="rank-no">{i+1}</b><span className="color-dot" style={{background:p.color}}/><div><b>{p.name}</b><small>{mode==="survival"?(p.finishPosition?`Hạng sinh tồn #${p.finishPosition}`:"● CÒN TRỤ"):p.finishPosition?`Về đích #${p.finishPosition}`:`${Math.round(p.progress)}% đường đua`}</small></div>{points.has(p.id)&&<em>+{points.get(p.id)}</em>}<strong>{p.score}</strong></div>)}</div></aside>
 }
 function Podium({players}:{players:RoomState["players"]}){
   const order=[players[1],players[0],players[2]];return <div className="podium">{order.map((p,i)=>p?<div className={`podium-slot place-${[2,1,3][i]}`} key={p.id}><Bean color={p.color} size={i===1?"lg":"md"} name={p.name} crown={i===1}/><div><b>#{[2,1,3][i]}</b><span>{p.score} PTS</span></div></div>:<div key={i}/>)}</div>

@@ -9,8 +9,10 @@ type Props = {
   players: Player[];
   mapId: string | null;
   round: number;
+  startedAt: string;
   onProgress: (value: number, positionX: number) => void;
   onFinish: (timeMs: number) => void;
+  onEliminate: (timeMs: number) => void;
 };
 
 type Obstacle = {
@@ -33,9 +35,26 @@ const JUMP_SPEED = 650;
 const GRAVITY = 1450;
 const PIT_LENGTH = 180;
 const FINISH_CLEARANCE = 650;
+const SURVIVAL_Y = 3900;
+const SURVIVAL_H = 2200;
 
 function mapSeed(id: string) {
   return [...id].reduce((sum, char) => sum + char.charCodeAt(0), 0);
+}
+
+function stableHash(value: string) {
+  return [...value].reduce((result, char) => ((result * 31 + char.charCodeAt(0)) >>> 0), 7);
+}
+
+function tileRectsForZone(zone: SpecialZone) {
+  const columns = 10, rows = 8, gap = 14, padX = 28, padY = 28;
+  const width = (zone.w - padX * 2 - gap * (columns - 1)) / columns;
+  const height = (zone.h - padY * 2 - gap * (rows - 1)) / rows;
+  return Array.from({ length: columns * rows }, (_, index) => ({
+    x: zone.x + padX + (index % columns) * (width + gap),
+    y: zone.y + padY + Math.floor(index / columns) * (height + gap),
+    w: width, h: height, index,
+  }));
 }
 
 function buildCourse(id: string) {
@@ -47,18 +66,15 @@ function buildCourse(id: string) {
   const zones: SpecialZone[] = [];
 
   if (id === "jungle") {
-    [1350, 4050, 6750].forEach((y, index) => zones.push({ kind: "tiles", x: 0, y, w: COURSE_W, h: 900, phase: seed * .01 + index * 1.7 }));
-    [2850, 5550, 8550].forEach((y, index) => obstacles.push({ x: 250 + index * 310, y, w: 180, h: 82, kind: "bumper", color: colors[index % colors.length], phase: index }));
+    zones.push({ kind: "tiles", x: 70, y: SURVIVAL_Y, w: COURSE_W - 140, h: SURVIVAL_H, phase: seed * .01 });
   } else if (id === "sky") {
     [1150, 3400, 5650, 7900].forEach((y, index) => {
       zones.push({ kind: "rings", x: 0, y, w: COURSE_W, h: 1120, phase: index });
       spinners.push({ x: COURSE_W / 2, y: y + 555, len: 205, speed: (index % 2 ? -1 : 1) * (1.45 + index * .18), phase: index, color: colors[index % colors.length] });
     });
   } else if (id === "lava") {
-    [1450, 4300, 7150].forEach((y, index) => {
-      zones.push({ kind: "arena", x: 0, y, w: COURSE_W, h: 1220, phase: index });
-      spinners.push({ x: COURSE_W / 2, y: y + 610, len: 455, speed: (index % 2 ? -1 : 1) * (1.65 + index * .28), phase: index * .8, color: index % 2 ? "#ffe14a" : "#ff6a3d" });
-    });
+    zones.push({ kind: "arena", x: 0, y: SURVIVAL_Y, w: COURSE_W, h: SURVIVAL_H, phase: 0 });
+    spinners.push({ x: COURSE_W / 2, y: SURVIVAL_Y + SURVIVAL_H / 2, len: 520, speed: 1.75, phase: 0, color: "#ffe14a" });
   }
 
   for (let zone = 1; zone <= (id === "neon" || id === "ice" ? 12 : 0); zone++) {
@@ -108,10 +124,11 @@ function buildCourse(id: string) {
   };
 }
 
-export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Props) {
+export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onFinish, onEliminate }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const progressCb = useRef(onProgress);
   const finishCb = useRef(onFinish);
+  const eliminateCb = useRef(onEliminate);
   const playersRef = useRef(players);
   const input = useRef({ x: 0, y: 0, jump: false, dash: false });
   const [countdown, setCountdown] = useState("3");
@@ -121,8 +138,9 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
   const [localProgress, setLocalProgress] = useState(0);
   const [impact, setImpact] = useState("");
   const map = MAPS.find((item) => item.id === mapId) ?? MAPS[0];
+  const isSurvival = map.mode === "survival";
 
-  useEffect(() => { progressCb.current = onProgress; finishCb.current = onFinish; }, [onProgress, onFinish]);
+  useEffect(() => { progressCb.current = onProgress; finishCb.current = onFinish; eliminateCb.current = onEliminate; }, [onProgress, onFinish, onEliminate]);
   useEffect(() => { playersRef.current = players; }, [players]);
 
   useEffect(() => {
@@ -137,16 +155,34 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
     let lastImpact = 0;
     let shake = 0;
     let renderScale = .6;
-    let cameraX = COURSE_W / 2;
-    let cameraY = 80;
-    let finished = false;
-    const readyAt = performance.now() + 3000;
-    const p = {
-      x: COURSE_W / 2, y: 80, vx: 0, vy: 0, z: 0, vz: 0, stun: 0, hitCd: 0,
-      dashCd: 0, dashTime: 0, mana: 100, lastJump: -Infinity,
-      falling: false, fallTime: 0, fallPit: null as Pit | null, checkpoint: 80, checkpointIndex: 0,
-    };
     const { obstacles, spinners, pits, zones } = buildCourse(map.id);
+    const survivalZone = isSurvival ? zones[0] : null;
+    function spawnFor(playerId: string) {
+      if (map.start === "tiles" && survivalZone) {
+        const tiles = tileRectsForZone(survivalZone);
+        const tile = tiles[stableHash(playerId) % tiles.length];
+        return { x: tile.x + tile.w / 2, y: tile.y + tile.h / 2 };
+      }
+      if (map.start === "arena" && survivalZone) {
+        const angle = stableHash(playerId) / 0xffffffff * Math.PI * 2;
+        return { x: COURSE_W / 2 + Math.cos(angle) * 300, y: survivalZone.y + survivalZone.h / 2 + Math.sin(angle) * 300 };
+      }
+      if (map.start === "ring") return { x: 510, y: 1300 };
+      return { x: COURSE_W / 2, y: 80 };
+    }
+    const spawn = spawnFor(me.id);
+    let cameraX = isSurvival ? COURSE_W / 2 : spawn.x;
+    let cameraY = isSurvival && survivalZone ? survivalZone.y + survivalZone.h / 2 : spawn.y;
+    let finished = false;
+    let eliminationSent = false;
+    const normalizedStartedAt = startedAt.includes("T") ? startedAt : `${startedAt.replace(" ", "T")}Z`;
+    const roundGoEpoch = (Number.isFinite(Date.parse(normalizedStartedAt)) ? Date.parse(normalizedStartedAt) : Date.now()) + 3000;
+    const readyAt = performance.now() + Math.max(0, roundGoEpoch - Date.now());
+    const p = {
+      x: spawn.x, y: spawn.y, vx: 0, vy: 0, z: 0, vz: 0, stun: 0, hitCd: 0,
+      dashCd: 0, dashTime: 0, mana: 100, lastJump: -Infinity,
+      falling: false, fallTime: 0, fallPit: null as Pit | null, checkpoint: spawn.y, checkpointIndex: 0,
+    };
     const particles: Particle[] = [];
     const remoteStates = new Map<string, RemoteState>();
     const keys: Record<string, boolean> = {};
@@ -257,10 +293,12 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
     function updateRemotePlayers(now: number, dt: number) {
       const active = new Set<string>();
       for (const other of playersRef.current) {
-        if (other.id === me.id) continue;
+        if (other.id === me.id || other.finishPosition) continue;
         active.add(other.id);
-        const targetX = Number.isFinite(other.positionX) ? other.positionX : 150 + hash(other.id) % (COURSE_W - 300);
-        const targetY = other.progress / 100 * COURSE;
+        const otherSpawn = spawnFor(other.id);
+        const waitingForFirstSync = isSurvival && other.progress < 1;
+        const targetX = waitingForFirstSync ? otherSpawn.x : Number.isFinite(other.positionX) ? other.positionX : otherSpawn.x;
+        const targetY = waitingForFirstSync ? otherSpawn.y : other.progress / 100 * COURSE;
         let state = remoteStates.get(other.id);
         if (!state) {
           state = { x: targetX, y: targetY, targetX, targetY, vx: 0, vy: 0, targetAt: now };
@@ -283,7 +321,7 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
 
     function collideWithPlayers(now: number) {
       for (const other of playersRef.current) {
-        if (other.id === me.id || other.progress >= 100) continue;
+        if (other.id === me.id || other.progress >= 100 || other.finishPosition) continue;
         const remote = remoteStates.get(other.id);
         const otherY = remote?.y ?? other.progress / 100 * COURSE;
         const otherX = remote?.x ?? other.positionX ?? 150 + hash(other.id) % (COURSE_W - 300);
@@ -312,18 +350,13 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
     }
 
     function getTileRects(zone: SpecialZone) {
-      const columns = 5, rows = 3, gap = 22, padX = 70, padY = 28;
-      const width = (zone.w - padX * 2 - gap * (columns - 1)) / columns;
-      const height = (zone.h - padY * 2 - gap * (rows - 1)) / rows;
-      return Array.from({ length: columns * rows }, (_, index) => ({
-        x: zone.x + padX + (index % columns) * (width + gap),
-        y: zone.y + padY + Math.floor(index / columns) * (height + gap),
-        w: width, h: height, index,
-      }));
+      return tileRectsForZone(zone);
     }
 
-    function tilePhase(zone: SpecialZone, index: number, time: number) {
-      return (time * .72 + zone.phase + index * .83) % 6;
+    function tileState(index: number, time: number) {
+      const order = (index * 37 + round * 13) % 80;
+      const dropAt = 6 + order * .55;
+      return { collapsed: time >= dropAt, warning: time >= dropAt - 2.4 };
     }
 
     function getRingCenters(zone: SpecialZone) {
@@ -337,11 +370,11 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
 
     function getSpecialPitAtPlayer(time: number) {
       const zone = zones.find((item) => p.x > item.x && p.x < item.x + item.w && p.y > item.y && p.y < item.y + item.h);
-      if (!zone) return null;
+      if (!zone) return isSurvival && survivalZone ? { x: survivalZone.x, y: survivalZone.y, w: survivalZone.w, h: survivalZone.h } : null;
       let safe = false;
       if (zone.kind === "tiles") {
         const tile = getTileRects(zone).find((item) => p.x > item.x && p.x < item.x + item.w && p.y > item.y && p.y < item.y + item.h);
-        safe = Boolean(tile && tilePhase(zone, tile.index, time) < 4.45);
+        safe = Boolean(tile && !tileState(tile.index, time).collapsed);
       } else if (zone.kind === "rings") {
         safe = getRingCenters(zone).some((ring) => Math.hypot(p.x - ring.x, p.y - ring.y) < ring.r - 10);
       } else {
@@ -372,7 +405,7 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
         setCountdown("GO!");
         window.setTimeout(() => setCountdown(""), 520);
       }
-      const raceSeconds = (now - start) / 1000;
+      const raceSeconds = Math.max(0, (Date.now() - roundGoEpoch) / 1000);
       updateRemotePlayers(now, dt);
       p.stun = Math.max(0, p.stun - dt);
       p.hitCd = Math.max(0, p.hitCd - dt);
@@ -383,8 +416,12 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
         p.fallTime += dt;
         p.x += p.vx * dt; p.y += p.vy * dt;
         p.z -= (260 + p.fallTime * 520) * dt;
-        cameraX = p.x; cameraY = p.y;
-        if (p.fallTime >= 1.05) respawn(now);
+        if (!isSurvival) { cameraX = p.x; cameraY = p.y; }
+        if (p.fallTime >= 1.05) {
+          if (isSurvival) {
+            if (!eliminationSent) { eliminationSent = true; finished = true; eliminateCb.current(Math.max(0, Date.now() - roundGoEpoch)); }
+          } else respawn(now);
+        }
       } else {
 
         let ix = (keys.d || keys.arrowright ? 1 : 0) - (keys.a || keys.arrowleft ? 1 : 0) + input.current.x;
@@ -420,6 +457,13 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
         if (p.z < 0) { p.z = 0; p.vz = 0; }
         p.y = Math.max(-120, p.y);
 
+        if (map.start === "tiles" && survivalZone) {
+          const minX = survivalZone.x + PLAYER_R, maxX = survivalZone.x + survivalZone.w - PLAYER_R;
+          const minY = survivalZone.y + PLAYER_R, maxY = survivalZone.y + survivalZone.h - PLAYER_R;
+          if (p.x < minX || p.x > maxX) { p.x = Math.max(minX, Math.min(maxX, p.x)); p.vx *= -.28; }
+          if (p.y < minY || p.y > maxY) { p.y = Math.max(minY, Math.min(maxY, p.y)); p.vy *= -.28; }
+        }
+
         for (let pass = 0; pass < 2; pass++) {
           for (const obstacle of obstacles) {
             if (Math.abs(p.y - obstacle.y) > 210) continue;
@@ -448,7 +492,7 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
         }
         collideWithPlayers(now);
 
-        for (let index = CHECKPOINTS.length - 1; index >= 1; index--) {
+        for (let index = isSurvival ? 0 : CHECKPOINTS.length - 1; index >= 1; index--) {
           if (p.y >= CHECKPOINTS[index] && index > p.checkpointIndex) {
             p.checkpointIndex = index; p.checkpoint = CHECKPOINTS[index];
             burst(p.x, p.y, "#45f4ff", 18); showImpact(`CHECKPOINT ${index}!`, now);
@@ -457,7 +501,8 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
         }
         const activePit = p.z < 48 ? getPitAtPlayer() ?? getSpecialPitAtPlayer(raceSeconds) : null;
         if (p.x < -PLAYER_R * 1.5 || p.x > COURSE_W + PLAYER_R * 1.5 || p.y < -80 || activePit) beginFall(now, activePit);
-        cameraX = p.x; cameraY = p.y;
+        if (isSurvival && survivalZone) { cameraX = COURSE_W / 2; cameraY = survivalZone.y + survivalZone.h / 2; }
+        else { cameraX = p.x; cameraY = p.y; }
       }
 
       if (![p.x, p.y, p.vx, p.vy, p.z, p.vz].every(Number.isFinite)) respawn(now);
@@ -474,9 +519,9 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
       if (now - lastSync > syncDelay) { lastSync = now; progressCb.current(progress, p.x); }
       if (now - lastUi > 80) {
         lastUi = now;
-        setLocalProgress(progress); setDash(Math.max(0, (1 - p.dashCd / 3) * 100)); setMana(p.mana); setElapsed(now - start);
+        setLocalProgress(progress); setDash(Math.max(0, (1 - p.dashCd / 3) * 100)); setMana(p.mana); setElapsed(Math.max(0, Date.now() - roundGoEpoch));
       }
-      if (p.y >= COURSE && !finished) { finished = true; progressCb.current(100, p.x); finishCb.current(now - start); }
+      if (!isSurvival && p.y >= COURSE && !finished) { finished = true; progressCb.current(100, p.x); finishCb.current(Math.max(0, Date.now() - roundGoEpoch)); }
     }
 
     function hash(value: string) {
@@ -486,10 +531,10 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
     function draw(now: number) {
       const rect = canvas!.getBoundingClientRect();
       const w = rect.width, h = rect.height;
-      const baseScale = Math.max(.5, Math.min(.78, w / 1800));
+      const baseScale = isSurvival ? Math.max(.24, Math.min(.55, w / 1900, h / 2700)) : Math.max(.5, Math.min(.78, w / 1800));
       renderScale = baseScale;
-      const playerScreenY = h * .73;
-      const raceSeconds = start ? (now - start) / 1000 : 0;
+      const playerScreenY = isSurvival ? h * .5 : h * .73;
+      const raceSeconds = Math.max(0, (Date.now() - roundGoEpoch) / 1000);
       const sy = (worldY: number) => playerScreenY - (worldY - cameraY) * baseScale;
       const perspective = (_worldY: number) => 1;
       const sx = (worldX: number, _worldY: number) => w / 2 + (worldX - cameraX) * baseScale;
@@ -529,7 +574,7 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
       }
 
       const visiblePlayers = playersRef.current
-        .filter((other) => other.id !== me.id)
+        .filter((other) => other.id !== me.id && !other.finishPosition)
         .map((other) => {
           const remote = remoteStates.get(other.id);
           return { ...other, worldY: remote?.y ?? other.progress / 100 * COURSE, worldX: remote?.x ?? other.positionX ?? 150 + hash(other.id) % (COURSE_W - 300) };
@@ -575,6 +620,7 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
       sky.addColorStop(0, map.sky); sky.addColorStop(.55, colorMix(map.sky, "#ffffff", .13)); sky.addColorStop(1, "#170a39");
       context.fillStyle = sky; context.fillRect(0, 0, w, h);
       drawScenery(context, w, h, now, cameraY, sx, sy, perspective);
+      if (isSurvival) return;
 
       const topLeft = sx(0, cameraY + h / baseScale * 1.2), topRight = sx(COURSE_W, cameraY + h / baseScale * 1.2);
       const bottomLeft = sx(0, cameraY - h / baseScale * .35), bottomRight = sx(COURSE_W, cameraY - h / baseScale * .35);
@@ -601,7 +647,7 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
       context.strokeStyle = "rgba(255,255,255,.35)"; context.lineWidth = 3;
       context.beginPath(); context.moveTo(topLeft + 8, 0); context.lineTo(bottomLeft + 8, h); context.moveTo(topRight - 8, 0); context.lineTo(bottomRight - 8, h); context.stroke();
 
-      drawCheckeredLine(context, START_LINE, "XUẤT PHÁT", sx, sy, perspective);
+      if (map.start === "line") drawCheckeredLine(context, START_LINE, "XUẤT PHÁT", sx, sy, perspective);
       drawCheckeredLine(context, COURSE, "VỀ ĐÍCH", sx, sy, perspective);
       for (let index = 1; index < CHECKPOINTS.length; index++) {
         drawCheckpointLine(context, CHECKPOINTS[index], index, sx, sy, perspective);
@@ -660,7 +706,7 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
       drawPit(context, { x: zone.x, y: zone.y, w: zone.w, h: zone.h }, sx, sy, perspective, now);
       if (zone.kind === "tiles") {
         for (const tile of getTileRects(zone)) {
-          const phase = tilePhase(zone, tile.index, time), collapsed = phase >= 4.45, warning = phase >= 3.65;
+          const { collapsed, warning } = tileState(tile.index, time);
           const left = sx(tile.x, tile.y), right = sx(tile.x + tile.w, tile.y);
           const nearY = sy(tile.y), farY = sy(tile.y + tile.h);
           context.save(); context.globalAlpha = collapsed ? .13 : 1;
@@ -673,6 +719,14 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
           }
           context.restore();
         }
+        const left = sx(zone.x, zone.y), right = sx(zone.x + zone.w, zone.y);
+        const top = sy(zone.y + zone.h), bottom = sy(zone.y);
+        context.save();
+        context.strokeStyle = "#ffe14a"; context.lineWidth = Math.max(7, 20 * renderScale); context.shadowColor = "#ffb238"; context.shadowBlur = 18;
+        context.strokeRect(left, top, right - left, bottom - top);
+        context.shadowBlur = 0; context.strokeStyle = "rgba(255,255,255,.72)"; context.lineWidth = Math.max(2, 5 * renderScale);
+        context.strokeRect(left + 7, top + 7, right - left - 14, bottom - top - 14);
+        context.restore();
       } else if (zone.kind === "rings") {
         for (const [index, ring] of getRingCenters(zone).entries()) {
           const x = sx(ring.x, ring.y), y = sy(ring.y), radius = ring.r * renderScale;
@@ -875,7 +929,7 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
       cancelAnimationFrame(raf);
       removeEventListener("keydown", down); removeEventListener("keyup", up); removeEventListener("resize", resize);
     };
-  }, [map.id, map.accent, map.floor, map.sky, me.color, me.id, me.name, round]);
+  }, [map.id, map.accent, map.floor, map.sky, me.color, me.id, me.name, round, startedAt, isSurvival, map.start]);
 
   function pointerAxis(event: React.PointerEvent<HTMLDivElement>) {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -891,13 +945,16 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
     (event.currentTarget.firstElementChild as HTMLElement).style.transform = "";
   }
 
+  const aliveCount = players.filter((player) => !player.finishPosition).length;
+  const survivalPercent = players.length ? aliveCount / players.length * 100 : 100;
+
   return <div className="race-game">
     <canvas ref={canvasRef}/>
     {countdown && <div className="race-countdown">{countdown}</div>}
     {impact && <div className="impact-callout">{impact}</div>}
     <div className="player-hud">
-      <div><small>TIẾN ĐỘ</small><b>{Math.min(100, Math.round(localProgress))}%</b></div>
-      <div className="hud-map"><span>{map.name} · ROUND {round}</span><i><b style={{ width: `${localProgress}%` }}/></i></div>
+      <div><small>{isSurvival?"CÒN TRỤ":"TIẾN ĐỘ"}</small><b>{isSurvival?aliveCount:`${Math.min(100, Math.round(localProgress))}%`}</b></div>
+      <div className="hud-map"><span>{map.name} · {isSurvival?"SINH TỒN":"ROUND"} {round}</span><i><b style={{ width: `${isSurvival?survivalPercent:localProgress}%` }}/></i></div>
       <div><small>THỜI GIAN</small><b>{(elapsed / 1000).toFixed(1)}s</b></div>
     </div>
     <div className="control-hint"><span><b>WASD</b> DI CHUYỂN</span><span><b>SPACE</b> NHẢY</span><span><b>SHIFT</b> BOOST</span></div>

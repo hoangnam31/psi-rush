@@ -20,14 +20,15 @@ export function RoomTrack({ players, mapId }: { players: Player[]; mapId: string
     for (const player of players) {
       active.add(player.id);
       const lane = Number.isFinite(player.positionX) ? 8 + Math.max(0, Math.min(1600, player.positionX)) / 1600 * 84 : stableLane(player.id);
-      const target = { progress: Math.min(100, Math.max(0, player.progress)), lane };
+      const fallbackSurvivalProgress = 32 + stableLane(`${player.id}:y`) * .42;
+      const target = { progress: Math.min(100, Math.max(0, map.mode === "survival" && player.progress < 1 ? fallbackSurvivalProgress : player.progress)), lane };
       targets.current.set(player.id, target);
       if (!displayed.current.has(player.id)) displayed.current.set(player.id, target);
     }
     for (const id of targets.current.keys()) {
       if (!active.has(id)) { targets.current.delete(id); displayed.current.delete(id); nodes.current.delete(id); }
     }
-  }, [players]);
+  }, [players, map.mode]);
 
   useEffect(() => {
     let frame = 0;
@@ -55,17 +56,17 @@ export function RoomTrack({ players, mapId }: { players: Player[]; mapId: string
   return <div className={`spectator-track admin-map-${map.id}`} style={{ "--sky": map.sky, "--floor": map.floor, "--accent": map.accent } as React.CSSProperties}>
     <div className="track-cloud c1"/><div className="track-cloud c2"/>
     <div className="track-lane">
-      <div className="finish-line"><b>FINISH</b></div>
+      {map.mode === "race"&&<div className="finish-line"><b>FINISH</b></div>}
       <MapFeatures mapId={map.id}/>
       {players.map((player) => <div
-        className="track-runner"
+        className={`track-runner ${player.finishPosition?"eliminated":""}`}
         key={player.id}
         ref={(node) => { if (node) nodes.current.set(player.id, node); else nodes.current.delete(player.id); }}
         style={{ bottom: `calc(${Math.min(97, displayed.current.get(player.id)?.progress ?? player.progress)}% - 12px)`, left: `${displayed.current.get(player.id)?.lane ?? stableLane(player.id)}%`, "--bean": player.color } as React.CSSProperties}
       >
         <span>{player.name}</span><i><b/><b/></i>
       </div>)}
-      <div className="start-line">START</div>
+      {map.mode === "race"?<div className="start-line">START</div>:<div className="survival-counter">CÒN TRỤ {players.filter(player=>!player.finishPosition).length}/{players.length}</div>}
     </div>
     <div className="realtime-chip"><i/> LIVE · 60 FPS VIEW</div>
     <div className="map-plaque"><small>ROUND MAP</small><b>{map.name}</b><span>{map.subtitle}</span></div>
@@ -77,10 +78,10 @@ function MapFeatures({ mapId }: { mapId: string }) {
     {[18, 35, 52, 69, 86].map((bottom, index) => <i key={bottom} style={{ bottom: `${bottom}%`, left: `${index % 2 ? 48 : 8}%` }}/>) }
   </div>;
   if (mapId === "jungle") return <div className="admin-tile-course" aria-hidden="true">
-    {[20, 47, 74].map((bottom, group) => <div className="admin-tile-grid" style={{ bottom: `${bottom}%` }} key={bottom}>{Array.from({ length: 12 }, (_, index) => <i className={(index + group * 3) % 7 === 0 ? "warning" : ""} key={index}/>)}</div>)}
+    <div className="admin-survival-frame">{Array.from({ length: 80 }, (_, index) => <i className={index % 13 === 0 ? "warning" : ""} key={index}/>)}</div>
   </div>;
   if (mapId === "lava") return <div className="admin-arena-course" aria-hidden="true">
-    {[20, 48, 76].map((bottom, index) => <i className="admin-arena" style={{ bottom: `${bottom}%` }} key={bottom}><b style={{ transform: `rotate(${index * 31}deg)` }}/></i>)}
+    <i className="admin-arena survival" style={{ bottom: "25%" }}><b/></i>
   </div>;
   if (mapId === "ice") return <div className="admin-ice-course" aria-hidden="true">
     {[20, 36, 53, 70, 86].map((bottom, index) => <i className={index % 2 ? "right" : "left"} style={{ bottom: `${bottom}%` }} key={bottom}><b/></i>)}

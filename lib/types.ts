@@ -11,7 +11,7 @@ export type RoundResult = {
 export type Room = {
   id: string; code: string; title: string; status: "waiting" | "racing" | "results" | "finished";
   maxPlayers: number; totalRounds: number; currentRound: number; currentMap: string | null;
-  mapPool: string[]; isHost: boolean;
+  mapPool: string[]; isHost: boolean; updatedAt: string;
 };
 
 export type RoomState = { room: Room; players: Player[]; results: RoundResult[] };

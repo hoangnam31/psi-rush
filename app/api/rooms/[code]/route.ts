@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { getDb } from "../../../../db";
 import { players, rooms, roundResults } from "../../../../db/schema";
-import { pickMap, scoreForPosition } from "../../../../lib/game";
+import { getMapMode, pickMap, scoreForPosition } from "../../../../lib/game";
 
 type Context = { params: Promise<{ code: string }> };
 
@@ -63,6 +63,17 @@ export async function POST(request: Request, context: Context) {
           await db.update(rooms).set({ status: "racing", currentRound: nextRound, currentMap: pickMap(pool, room.currentMap), updatedAt: sql`CURRENT_TIMESTAMP` }).where(eq(rooms.id, room.id));
         }
       } else if (action === "endRound") {
+        if (getMapMode(room.currentMap) === "survival") {
+          const roster = await db.select().from(players).where(eq(players.roomId, room.id));
+          const completed = await db.select().from(roundResults).where(and(eq(roundResults.roomId, room.id), eq(roundResults.roundNumber, room.currentRound)));
+          const completedIds = new Set(completed.map((result) => result.playerId));
+          const survivors = roster.filter((item) => !completedIds.has(item.id)).sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt));
+          for (let index = 0; index < survivors.length; index++) {
+            const survivor = survivors[index], position = index + 1, points = scoreForPosition(position);
+            await db.insert(roundResults).values({ roomId: room.id, roundNumber: room.currentRound, playerId: survivor.id, position, points, timeMs: 0 });
+            await db.update(players).set({ finishPosition: position, score: sql`${players.score} + ${points}` }).where(eq(players.id, survivor.id));
+          }
+        }
         await db.update(rooms).set({ status: "results", updatedAt: sql`CURRENT_TIMESTAMP` }).where(eq(rooms.id, room.id));
       } else if (action === "finishGame") {
         await db.update(rooms).set({ status: "finished", updatedAt: sql`CURRENT_TIMESTAMP` }).where(eq(rooms.id, room.id));
@@ -92,6 +103,27 @@ export async function POST(request: Request, context: Context) {
         await db.update(players).set({ progress: 100, finishPosition: position, score: sql`${players.score} + ${points}`, lastSeenAt: sql`CURRENT_TIMESTAMP` }).where(eq(players.id, player.id));
         return Response.json({ ok: true, position, points });
       }
+    } else if (action === "eliminate") {
+      if (getMapMode(room.currentMap) !== "survival") return Response.json({ error: "Map hiện tại không phải chế độ sinh tồn" }, { status: 409 });
+      const existing = (await db.select().from(roundResults).where(and(eq(roundResults.roomId, room.id), eq(roundResults.roundNumber, room.currentRound), eq(roundResults.playerId, player.id))).limit(1))[0];
+      if (existing) return Response.json({ ok: true, position: existing.position, points: existing.points });
+
+      const roster = await db.select().from(players).where(eq(players.roomId, room.id));
+      const completed = await db.select().from(roundResults).where(and(eq(roundResults.roomId, room.id), eq(roundResults.roundNumber, room.currentRound)));
+      const position = Math.max(2, roster.length - completed.length);
+      const points = scoreForPosition(position);
+      await db.insert(roundResults).values({ roomId: room.id, roundNumber: room.currentRound, playerId: player.id, position, points, timeMs: Math.max(0, Number(body.timeMs) || 0) });
+      await db.update(players).set({ finishPosition: position, score: sql`${players.score} + ${points}`, lastSeenAt: sql`CURRENT_TIMESTAMP` }).where(eq(players.id, player.id));
+
+      const completedIds = new Set([...completed.map((result) => result.playerId), player.id]);
+      const survivors = roster.filter((item) => !completedIds.has(item.id));
+      if (survivors.length === 1) {
+        const winner = survivors[0];
+        const winnerPoints = scoreForPosition(1);
+        await db.insert(roundResults).values({ roomId: room.id, roundNumber: room.currentRound, playerId: winner.id, position: 1, points: winnerPoints, timeMs: Math.max(0, Number(body.timeMs) || 0) });
+        await db.update(players).set({ finishPosition: 1, score: sql`${players.score} + ${winnerPoints}`, lastSeenAt: sql`CURRENT_TIMESTAMP` }).where(eq(players.id, winner.id));
+      }
+      return Response.json({ ok: true, position, points });
     }
     return Response.json({ ok: true });
   } catch (error) {
