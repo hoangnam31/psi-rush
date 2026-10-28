@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { MAPS } from "../lib/game";
 import { GameAudio } from "../lib/game-audio";
+import { tileCollapseState } from "../lib/tile-collapse";
 import type { Player } from "../lib/types";
 
 type Props = {
@@ -363,9 +364,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
     }
 
     function tileState(index: number, time: number) {
-      const order = (index * 37 + round * 13) % 80;
-      const dropAt = 6 + order * .55;
-      return { collapsed: time >= dropAt, warning: time >= dropAt - 2.4 };
+      return tileCollapseState(index, time, round);
     }
 
     function getRingCenters(zone: SpecialZone): RingPlatform[] {

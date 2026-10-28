@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MAPS } from "../lib/game";
+import { TILE_COUNT, tileCollapseState } from "../lib/tile-collapse";
 import type { Player } from "../lib/types";
 
 function stableLane(id: string) {
@@ -9,8 +10,9 @@ function stableLane(id: string) {
   return 10 + hash % 76;
 }
 
-export function RoomTrack({ players, mapId }: { players: Player[]; mapId: string | null }) {
+export function RoomTrack({ players, mapId, round, startedAt }: { players: Player[]; mapId: string | null; round: number; startedAt: string }) {
   const map = MAPS.find((item) => item.id === mapId) ?? MAPS[0];
+  const [roundSeconds, setRoundSeconds] = useState(0);
   const targets = useRef(new Map<string, { progress: number; lane: number }>());
   const displayed = useRef(new Map<string, { progress: number; lane: number }>());
   const nodes = useRef(new Map<string, HTMLDivElement>());
@@ -53,11 +55,21 @@ export function RoomTrack({ players, mapId }: { players: Player[]; mapId: string
     return () => cancelAnimationFrame(frame);
   }, []);
 
+  useEffect(() => {
+    const normalized = startedAt.includes("T") ? startedAt : `${startedAt.replace(" ", "T")}Z`;
+    const parsed = Date.parse(normalized);
+    const goAt = (Number.isFinite(parsed) ? parsed : Date.now()) + 3000;
+    const update = () => setRoundSeconds(Math.max(0, (Date.now() - goAt) / 1000));
+    update();
+    const timer = window.setInterval(update, 120);
+    return () => window.clearInterval(timer);
+  }, [startedAt, round]);
+
   return <div className={`spectator-track admin-map-${map.id}`} style={{ "--sky": map.sky, "--floor": map.floor, "--accent": map.accent } as React.CSSProperties}>
     <div className="track-cloud c1"/><div className="track-cloud c2"/>
     <div className="track-lane">
       {map.mode === "race"&&<div className="finish-line"><b>FINISH</b></div>}
-      <MapFeatures mapId={map.id}/>
+      <MapFeatures mapId={map.id} round={round} roundSeconds={roundSeconds}/>
       {players.map((player) => <div
         className={`track-runner ${player.finishPosition?"eliminated":""}`}
         key={player.id}
@@ -73,12 +85,15 @@ export function RoomTrack({ players, mapId }: { players: Player[]; mapId: string
   </div>;
 }
 
-function MapFeatures({ mapId }: { mapId: string }) {
+function MapFeatures({ mapId, round, roundSeconds }: { mapId: string; round: number; roundSeconds: number }) {
   if (mapId === "sky") return <div className="admin-ring-course" aria-hidden="true">
     {[18, 35, 52, 69, 86].map((bottom, index) => <i key={bottom} style={{ bottom: `${bottom}%`, left: `${index % 2 ? 48 : 8}%` }}/>) }
   </div>;
   if (mapId === "jungle") return <div className="admin-tile-course" aria-hidden="true">
-    <div className="admin-survival-frame">{Array.from({ length: 80 }, (_, index) => <i className={index % 13 === 0 ? "warning" : ""} key={index}/>)}</div>
+    <div className="admin-survival-frame">{Array.from({ length: TILE_COUNT }, (_, index) => {
+      const state = tileCollapseState(index, roundSeconds, round);
+      return <i className={state.collapsed ? "collapsed" : state.warning ? "warning" : ""} key={index}/>;
+    })}</div>
   </div>;
   if (mapId === "lava") return <div className="admin-arena-course" aria-hidden="true">
     <i className="admin-arena survival" style={{ bottom: "25%" }}><b/></i>
