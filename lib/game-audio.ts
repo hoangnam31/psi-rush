@@ -16,13 +16,17 @@ export class GameAudio {
 
   constructor(private mapId: string) {}
 
-  unlock() {
-    if (!this.enabled) return;
-    if (!this.context) {
-      this.context = new AudioContext();
-      this.master = this.context.createGain();
-      this.master.gain.value = .72;
-      this.master.connect(this.context.destination);
+  async unlock() {
+    if (!this.enabled) return false;
+    try {
+      if (!this.context || this.context.state === "closed") {
+        this.context = new AudioContext();
+        this.master = this.context.createGain();
+        this.master.gain.value = .9;
+        this.master.connect(this.context.destination);
+      }
+    } catch {
+      return false;
     }
     const startMusic = () => {
       if (!this.enabled || this.context?.state !== "running" || this.musicTimer !== null) return;
@@ -30,35 +34,35 @@ export class GameAudio {
       this.musicTimer = window.setInterval(() => this.playMusicStep(), 340);
     };
     if (this.context.state === "suspended") {
-      void this.context.resume().then(startMusic).catch(() => {});
-    } else {
-      startMusic();
+      try { await this.context.resume(); } catch { return false; }
     }
+    startMusic();
+    return this.context.state === "running";
   }
 
   setEnabled(enabled: boolean) {
     this.enabled = enabled;
     if (enabled) {
-      this.unlock();
-      this.master?.gain.setTargetAtTime(.72, this.context?.currentTime ?? 0, .025);
+      void this.unlock();
+      this.master?.gain.setTargetAtTime(.9, this.context?.currentTime ?? 0, .025);
     } else if (this.master && this.context) {
       this.master.gain.setTargetAtTime(0, this.context.currentTime, .02);
     }
   }
 
   jump() {
-    this.unlock();
+    void this.unlock();
     this.sweep(330, 720, .14, "square", .12);
   }
 
   boost() {
-    this.unlock();
+    void this.unlock();
     this.sweep(150, 620, .28, "sawtooth", .13);
     this.sweep(95, 260, .34, "triangle", .08, .035);
   }
 
   respawn() {
-    this.unlock();
+    void this.unlock();
     this.sweep(240, 780, .42, "triangle", .11);
   }
 
@@ -74,9 +78,9 @@ export class GameAudio {
     if (!this.enabled || !this.context || !this.master) return;
     const track = TRACKS[this.mapId] ?? TRACKS.neon;
     const note = track[this.musicStep % track.length];
-    this.tone(note, .27, "triangle", .032);
-    if (this.musicStep % 4 === 0) this.tone(note / 2, .58, "sine", .024);
-    if (this.musicStep % 2 === 1) this.tone(note * 2, .09, "square", .012, .05);
+    this.tone(note, .27, "triangle", .068);
+    if (this.musicStep % 4 === 0) this.tone(note / 2, .58, "sine", .047);
+    if (this.musicStep % 2 === 1) this.tone(note * 2, .09, "square", .024, .05);
     this.musicStep++;
   }
 

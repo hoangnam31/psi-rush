@@ -195,14 +195,14 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
     const keys: Record<string, boolean> = {};
 
     const down = (event: KeyboardEvent) => {
-      audio.unlock();
+      void audio.unlock();
       keys[event.key.toLowerCase()] = true;
       if (event.code === "Space") input.current.jump = true;
       if (event.key === "Shift") input.current.dash = true;
       if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.code)) event.preventDefault();
     };
     const up = (event: KeyboardEvent) => { keys[event.key.toLowerCase()] = false; };
-    const unlockAudio = () => audio.unlock();
+    const unlockAudio = () => { void audio.unlock(); };
     addEventListener("keydown", down);
     addEventListener("keyup", up);
     addEventListener("pointerdown", unlockAudio);

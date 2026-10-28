@@ -6,12 +6,16 @@ import { GameAudio } from "../lib/game-audio";
 export function LobbyMusic() {
   const audioRef = useRef<GameAudio | null>(null);
   const [soundOn, setSoundOn] = useState(true);
+  const [playing, setPlaying] = useState(false);
 
   useEffect(() => {
     const audio = new GameAudio("lobby");
     audioRef.current = audio;
-    const unlock = () => audio.unlock();
-    audio.unlock();
+    const unlock = (event: Event) => {
+      if (event.target instanceof Element && event.target.closest(".lobby-sound-toggle")) return;
+      void audio.unlock().then(setPlaying);
+    };
+    void audio.unlock().then(setPlaying);
     addEventListener("pointerdown", unlock);
     addEventListener("keydown", unlock);
     return () => {
@@ -22,13 +26,20 @@ export function LobbyMusic() {
     };
   }, []);
 
-  function toggleSound() {
-    const next = !soundOn;
-    setSoundOn(next);
-    audioRef.current?.setEnabled(next);
+  async function toggleSound() {
+    if (!soundOn || !playing) {
+      setSoundOn(true);
+      audioRef.current?.setEnabled(true);
+      setPlaying(await audioRef.current?.unlock() === true);
+      return;
+    }
+    setSoundOn(false);
+    setPlaying(false);
+    audioRef.current?.setEnabled(false);
   }
 
-  return <button className={`sound-toggle lobby-sound-toggle ${soundOn ? "" : "muted"}`} onClick={toggleSound} aria-label={soundOn ? "Tắt nhạc phòng chờ" : "Bật nhạc phòng chờ"}>
-    <b>{soundOn ? "♪" : "×"}</b><span>{soundOn ? "NHẠC PHÒNG CHỜ" : "ĐÃ TẮT"}</span>
+  const active = soundOn && playing;
+  return <button className={`sound-toggle lobby-sound-toggle ${active ? "playing" : "muted"}`} onClick={() => void toggleSound()} aria-label={active ? "Tắt nhạc phòng chờ" : "Bật nhạc phòng chờ"}>
+    <b>{active ? "♪" : "▶"}</b><span>{active ? "ĐANG PHÁT" : soundOn ? "CHẠM BẬT NHẠC" : "ĐÃ TẮT"}</span>
   </button>;
 }
