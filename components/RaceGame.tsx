@@ -155,6 +155,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
     const ctx = canvas.getContext("2d")!;
     const audio = new GameAudio(map.id);
     audioRef.current = audio;
+    void audio.unlock();
     let raf = 0;
     let last = performance.now();
     let start = 0;
@@ -270,6 +271,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
         p.stun = obstacle.kind === "mover" ? .34 : .16;
         p.hitCd = .18;
         shake = obstacle.kind === "mover" ? .72 : .32;
+        audio.collision(obstacle.kind === "mover");
         burst(p.x, p.y, obstacle.color, obstacle.kind === "mover" ? 12 : 7);
         showImpact(obstacle.kind === "mover" ? "BỊ HÚC!" : "VA CHẠM!", now);
       }
@@ -289,6 +291,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       p.stun = .58;
       p.hitCd = .3;
       shake = .9;
+      audio.collision(true);
       burst(cx, cy, obstacle.color, 16);
       showImpact("BOING!", now);
     }
@@ -525,6 +528,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
             p.vx = Math.cos(angle + Math.PI / 2) * direction * 760;
             p.vy = Math.sin(angle + Math.PI / 2) * direction * 560 - 180;
             p.vz = 220; p.stun = .7; p.hitCd = .38; shake = 1;
+            audio.collision(true);
             burst(p.x, p.y, spinner.color, 18); showImpact("VĂNG RA!", now);
           }
         }
@@ -533,6 +537,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
         for (let index = isSurvival ? 0 : CHECKPOINTS.length - 1; index >= 1; index--) {
           if (p.y >= CHECKPOINTS[index] && index > p.checkpointIndex) {
             p.checkpointIndex = index; p.checkpoint = CHECKPOINTS[index];
+            audio.checkpoint();
             burst(p.x, p.y, "#45f4ff", 18); showImpact(`CHECKPOINT ${index}!`, now);
             break;
           }

@@ -7,6 +7,9 @@ const TRACKS: Record<string, number[]> = {
   neon: [294, 370, 440, 523, 440, 370, 330, 392],
 };
 
+let sharedContext: AudioContext | null = null;
+let sharedMaster: GainNode | null = null;
+
 export class GameAudio {
   private context: AudioContext | null = null;
   private master: GainNode | null = null;
@@ -19,15 +22,18 @@ export class GameAudio {
   async unlock() {
     if (!this.enabled) return false;
     try {
-      if (!this.context || this.context.state === "closed") {
-        this.context = new AudioContext();
-        this.master = this.context.createGain();
-        this.master.gain.value = .9;
-        this.master.connect(this.context.destination);
+      if (!sharedContext || sharedContext.state === "closed") {
+        sharedContext = new AudioContext();
+        sharedMaster = sharedContext.createGain();
+        sharedMaster.gain.value = .9;
+        sharedMaster.connect(sharedContext.destination);
       }
+      this.context = sharedContext;
+      this.master = sharedMaster;
     } catch {
       return false;
     }
+    this.master?.gain.setTargetAtTime(.9, this.context.currentTime, .018);
     const startMusic = () => {
       if (!this.enabled || this.context?.state !== "running" || this.musicTimer !== null) return;
       this.playMusicStep();
@@ -66,10 +72,22 @@ export class GameAudio {
     this.sweep(240, 780, .42, "triangle", .11);
   }
 
+  checkpoint() {
+    void this.unlock();
+    this.tone(523, .2, "triangle", .14);
+    this.tone(659, .22, "triangle", .13, .09);
+    this.tone(784, .3, "sine", .12, .18);
+  }
+
+  collision(strong = false) {
+    void this.unlock();
+    this.sweep(strong ? 220 : 170, strong ? 72 : 92, strong ? .2 : .13, "square", strong ? .16 : .11);
+    this.tone(strong ? 64 : 82, strong ? .18 : .1, "sine", strong ? .16 : .1);
+  }
+
   stop() {
     if (this.musicTimer !== null) window.clearInterval(this.musicTimer);
     this.musicTimer = null;
-    if (this.context) void this.context.close();
     this.context = null;
     this.master = null;
   }
