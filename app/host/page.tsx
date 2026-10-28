@@ -12,7 +12,7 @@ export default function HostPage() {
   const [session, setSession] = useState<HostSession | null>(null);
   const [state, setState] = useState<RoomState | null>(null);
   const [error, setError] = useState(""); const [busy, setBusy] = useState(false);
-  const [title, setTitle] = useState("Friday Wobble Cup"); const [maxPlayers, setMaxPlayers] = useState(50);
+  const [title, setTitle] = useState("PSI Rush Cup"); const [maxPlayers, setMaxPlayers] = useState(50);
   const [rounds, setRounds] = useState(3); const [maps, setMaps] = useState<string[]>(MAPS.map(m=>m.id));
 
   useEffect(()=>{

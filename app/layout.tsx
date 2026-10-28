@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Wobble Rush Arena — Internal Party Race",
+  title: "PSI RUSH — Internal Party Race",
   description: "Tạo phòng, quét mã tham gia và thi đấu nhiều vòng cùng đồng đội.",
   icons: {
     icon: "/favicon.svg",
@@ -17,7 +17,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="vi">
-      <body className="antialiased">{children}</body>
+      <body className="antialiased">{children}<div className="product-credit">Sản phẩm của NamVH7</div></body>
     </html>
   );
 }

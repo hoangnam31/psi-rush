@@ -11,7 +11,6 @@ function stableLane(id: string) {
 
 export function RoomTrack({ players, mapId }: { players: Player[]; mapId: string | null }) {
   const map = MAPS.find((item) => item.id === mapId) ?? MAPS[0];
-  const obstacles = [18, 34, 51, 68, 84];
   const targets = useRef(new Map<string, { progress: number; lane: number }>());
   const displayed = useRef(new Map<string, { progress: number; lane: number }>());
   const nodes = useRef(new Map<string, HTMLDivElement>());
@@ -53,11 +52,11 @@ export function RoomTrack({ players, mapId }: { players: Player[]; mapId: string
     return () => cancelAnimationFrame(frame);
   }, []);
 
-  return <div className="spectator-track" style={{ "--sky": map.sky, "--floor": map.floor, "--accent": map.accent } as React.CSSProperties}>
+  return <div className={`spectator-track admin-map-${map.id}`} style={{ "--sky": map.sky, "--floor": map.floor, "--accent": map.accent } as React.CSSProperties}>
     <div className="track-cloud c1"/><div className="track-cloud c2"/>
     <div className="track-lane">
       <div className="finish-line"><b>FINISH</b></div>
-      {obstacles.map((position, index) => <div className={`track-obstacle o${index % 3}`} style={{ bottom: `${position}%` }} key={position}><i/><i/><i/></div>)}
+      <MapFeatures mapId={map.id}/>
       {players.map((player) => <div
         className="track-runner"
         key={player.id}
@@ -71,4 +70,20 @@ export function RoomTrack({ players, mapId }: { players: Player[]; mapId: string
     <div className="realtime-chip"><i/> LIVE · 60 FPS VIEW</div>
     <div className="map-plaque"><small>ROUND MAP</small><b>{map.name}</b><span>{map.subtitle}</span></div>
   </div>;
+}
+
+function MapFeatures({ mapId }: { mapId: string }) {
+  if (mapId === "sky") return <div className="admin-ring-course" aria-hidden="true">
+    {[18, 35, 52, 69, 86].map((bottom, index) => <i key={bottom} style={{ bottom: `${bottom}%`, left: `${index % 2 ? 48 : 8}%` }}/>) }
+  </div>;
+  if (mapId === "jungle") return <div className="admin-tile-course" aria-hidden="true">
+    {[20, 47, 74].map((bottom, group) => <div className="admin-tile-grid" style={{ bottom: `${bottom}%` }} key={bottom}>{Array.from({ length: 12 }, (_, index) => <i className={(index + group * 3) % 7 === 0 ? "warning" : ""} key={index}/>)}</div>)}
+  </div>;
+  if (mapId === "lava") return <div className="admin-arena-course" aria-hidden="true">
+    {[20, 48, 76].map((bottom, index) => <i className="admin-arena" style={{ bottom: `${bottom}%` }} key={bottom}><b style={{ transform: `rotate(${index * 31}deg)` }}/></i>)}
+  </div>;
+  if (mapId === "ice") return <div className="admin-ice-course" aria-hidden="true">
+    {[20, 36, 53, 70, 86].map((bottom, index) => <i className={index % 2 ? "right" : "left"} style={{ bottom: `${bottom}%` }} key={bottom}><b/></i>)}
+  </div>;
+  return <>{[18, 34, 51, 68, 84].map((position, index) => <div className={`track-obstacle o${index % 3}`} style={{ bottom: `${position}%` }} key={position}><i/><i/><i/></div>)}</>;
 }

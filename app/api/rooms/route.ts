@@ -16,7 +16,7 @@ export async function POST(request: Request) {
     const mapPool = (body.mapPool ?? []).filter((id) => validMapIds.has(id as never));
     const room = {
       id: crypto.randomUUID(), code: makeCode(), hostToken: crypto.randomUUID(),
-      title: (body.title || "Wobble Cup").trim().slice(0, 40),
+      title: (body.title || "PSI Rush Cup").trim().slice(0, 40),
       maxPlayers: Math.max(2, Math.min(200, Number(body.maxPlayers) || 50)),
       totalRounds: Math.max(1, Math.min(7, Number(body.totalRounds) || 3)),
       mapPool: JSON.stringify(mapPool.length ? mapPool : MAPS.map((m) => m.id)),

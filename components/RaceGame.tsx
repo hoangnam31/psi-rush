@@ -500,8 +500,9 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
       drawWorld(ctx, w, h, now, cameraY, baseScale, sx, sy, perspective);
 
       for (const zone of zones) {
-        const y = sy(zone.y);
-        if (y < -zone.h * baseScale - 200 || y > h + 200) continue;
+        const zoneStart = sy(zone.y);
+        const zoneEnd = sy(zone.y + zone.h);
+        if (Math.max(zoneStart, zoneEnd) < -200 || Math.min(zoneStart, zoneEnd) > h + 200) continue;
         drawSpecialZone(ctx, zone, raceSeconds, sx, sy, perspective, now);
       }
 

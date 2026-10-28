@@ -28,6 +28,6 @@ export default function Home() {
         <Bean color="#8b5cf6" size="lg" crown/><div className="side-bean pink"><Bean color="#ff3d9a"/></div><div className="side-bean lime"><Bean color="#b6f43b"/></div>
       </div>
     </section>
-    <footer className="landing-footer"><span>WOBBLE RUSH ARENA</span><span>Built for teams that play hard.</span></footer>
+    <footer className="landing-footer"><span>PSI RUSH</span><span>Built for teams that play hard.</span></footer>
   </main>;
 }
