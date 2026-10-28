@@ -30,6 +30,7 @@ const CHECKPOINTS = [80, 2500, 5000, 7500];
 const JUMP_SPEED = 650;
 const GRAVITY = 1450;
 const PIT_LENGTH = 180;
+const FINISH_CLEARANCE = 650;
 
 function mapSeed(id: string) {
   return [...id].reduce((sum, char) => sum + char.charCodeAt(0), 0);
@@ -80,7 +81,12 @@ function buildCourse(id: string) {
       pits.push({ x: 210 + (seed * zone * 23) % 900, y: pitY, w: 330, h: PIT_LENGTH });
     }
   }
-  return { obstacles, spinners, pits };
+  const courseLimit = COURSE - FINISH_CLEARANCE;
+  return {
+    obstacles: obstacles.filter((obstacle) => obstacle.y + obstacle.h <= courseLimit),
+    spinners: spinners.filter((spinner) => spinner.y + spinner.len <= courseLimit),
+    pits: pits.filter((pit) => pit.y + pit.h <= courseLimit),
+  };
 }
 
 export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Props) {
@@ -119,7 +125,7 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
     const p = {
       x: COURSE_W / 2, y: 80, vx: 0, vy: 0, z: 0, vz: 0, stun: 0, hitCd: 0,
       dashCd: 0, dashTime: 0, mana: 100, lastJump: -Infinity,
-      falling: false, fallTime: 0, checkpoint: 80, checkpointIndex: 0,
+      falling: false, fallTime: 0, fallPit: null as Pit | null, checkpoint: 80, checkpointIndex: 0,
     };
     const { obstacles, spinners, pits } = buildCourse(map.id);
     const particles: Particle[] = [];
@@ -253,19 +259,19 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
       }
     }
 
-    function isInsidePit() {
-      return pits.some((pit) => p.x > pit.x + 10 && p.x < pit.x + pit.w - 10 && p.y > pit.y + 10 && p.y < pit.y + pit.h - 10);
+    function getPitAtPlayer() {
+      return pits.find((pit) => p.x > pit.x + 10 && p.x < pit.x + pit.w - 10 && p.y > pit.y + 10 && p.y < pit.y + pit.h - 10) ?? null;
     }
 
-    function beginFall(now: number) {
+    function beginFall(now: number, pit: Pit | null) {
       if (p.falling) return;
-      p.falling = true; p.fallTime = 0; p.vx *= .5; p.vy *= .5; p.vz = -120;
+      p.falling = true; p.fallTime = 0; p.fallPit = pit; p.vx *= .28; p.vy *= .28; p.vz = -120;
       shake = .75; burst(p.x, p.y, "#ab7cff", 14); showImpact("RƠI XUỐNG VỰC!", now);
     }
 
     function respawn(now: number) {
       p.x = COURSE_W / 2; p.y = p.checkpoint + 45; p.vx = 0; p.vy = 0; p.z = 0; p.vz = 0;
-      p.falling = false; p.fallTime = 0; p.stun = .55; p.hitCd = .8;
+      p.falling = false; p.fallTime = 0; p.fallPit = null; p.stun = .55; p.hitCd = .8;
       cameraX = p.x; cameraY = p.y;
       progressCb.current(Math.min(99.8, p.y / COURSE * 100));
       burst(p.x, p.y, "#8df6ff", 20); showImpact("HỒI SINH!", now);
@@ -361,7 +367,8 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
             break;
           }
         }
-        if (p.x < -PLAYER_R * 1.5 || p.x > COURSE_W + PLAYER_R * 1.5 || p.y < -80 || (p.z < 48 && isInsidePit())) beginFall(now);
+        const activePit = p.z < 48 ? getPitAtPlayer() : null;
+        if (p.x < -PLAYER_R * 1.5 || p.x > COURSE_W + PLAYER_R * 1.5 || p.y < -80 || activePit) beginFall(now, activePit);
         cameraX = p.x; cameraY = p.y;
       }
 
@@ -447,7 +454,17 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
       const fallScale = p.falling ? Math.max(.22, 1 - p.fallTime * .66) : 1;
       const fallAlpha = p.falling ? Math.max(.22, 1 - p.fallTime * .7) : 1;
       const playerScale = 35 * baseScale * fallScale;
-      drawBean(ctx, sx(p.x, p.y), sy(p.y) - p.z * baseScale, playerScale, me.color, me.name, fallAlpha, raceSeconds, true, p.stun);
+      const fallDrop = p.falling ? Math.min(115, p.fallTime * p.fallTime * 150) : 0;
+      const playerY = p.falling ? sy(p.y) + fallDrop : sy(p.y) - p.z * baseScale;
+      if (p.falling && p.fallPit) {
+        ctx.save();
+        clipPit(ctx, p.fallPit, sx, sy);
+        drawBean(ctx, sx(p.x, p.y), playerY, playerScale, me.color, me.name, fallAlpha, raceSeconds, true, p.stun);
+        ctx.restore();
+        drawPitRim(ctx, p.fallPit, sx, sy, perspective);
+      } else {
+        drawBean(ctx, sx(p.x, p.y), playerY, playerScale, me.color, me.name, fallAlpha, raceSeconds, true, p.stun);
+      }
       ctx.restore();
 
       ctx.textAlign = "center";
@@ -540,6 +557,29 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
         context.fillRect(x1 + (x4 - x1) * t + 10, yy, Math.max(0, (x2 + (x3 - x2) * t) - (x1 + (x4 - x1) * t) - 20), 3);
       }
       context.restore();
+    }
+
+    function clipPit(
+      context: CanvasRenderingContext2D, pit: Pit,
+      sx: (x: number, y: number) => number, sy: (y: number) => number,
+    ) {
+      context.beginPath();
+      context.moveTo(sx(pit.x, pit.y), sy(pit.y));
+      context.lineTo(sx(pit.x + pit.w, pit.y), sy(pit.y));
+      context.lineTo(sx(pit.x + pit.w, pit.y + pit.h), sy(pit.y + pit.h));
+      context.lineTo(sx(pit.x, pit.y + pit.h), sy(pit.y + pit.h));
+      context.closePath(); context.clip();
+    }
+
+    function drawPitRim(
+      context: CanvasRenderingContext2D, pit: Pit,
+      sx: (x: number, y: number) => number, sy: (y: number) => number, perspective: (y: number) => number,
+    ) {
+      const y = sy(pit.y), left = sx(pit.x, pit.y), right = sx(pit.x + pit.w, pit.y);
+      context.strokeStyle = "#08020f"; context.lineWidth = Math.max(8, 16 * perspective(pit.y));
+      context.beginPath(); context.moveTo(left, y + 3); context.lineTo(right, y + 3); context.stroke();
+      context.strokeStyle = "rgba(194,137,255,.88)"; context.lineWidth = Math.max(2, 4 * perspective(pit.y));
+      context.beginPath(); context.moveTo(left, y - 3); context.lineTo(right, y - 3); context.stroke();
     }
 
     function drawScenery(
@@ -726,7 +766,7 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
     </div>
     <div className="control-hint"><span><b>WASD</b> DI CHUYỂN</span><span><b>SPACE</b> NHẢY</span><span><b>SHIFT</b> BOOST</span></div>
     <div className="boost-hud"><span>SHIFT</span><i><b style={{ width: `${dash}%` }}/></i></div>
-    <div className={`mana-hud ${mana < 25 ? "low" : ""}`}><span><b>SPACE</b> MANA NHẢY</span><i><b style={{ width: `${mana}%` }}/></i><em>{Math.round(mana)}</em></div>
+    <div className={`mana-hud ${mana < 25 ? "low" : ""}`}><div className="mana-label"><span><b>SPACE</b> MANA NHẢY</span><em>{Math.round(mana)}</em></div><i><b style={{ width: `${mana}%` }}/></i></div>
     <div className="touch-controls">
       <div className="touch-stick" onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); pointerAxis(event); }} onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) pointerAxis(event); }} onPointerUp={clearAxis} onPointerCancel={clearAxis}><i/></div>
       <div><button className={mana < 25 ? "empty" : ""} onPointerDown={() => input.current.jump = true}>↑<small>{mana < 25 ? "HẾT MANA" : "NHẢY"}</small></button><button onPointerDown={() => input.current.dash = true}>»<small>BOOST</small></button></div>
