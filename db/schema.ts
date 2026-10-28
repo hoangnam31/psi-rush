@@ -28,6 +28,7 @@ export const players = sqliteTable("players", {
   color: text("color").notNull().default("#8b5cf6"),
   score: integer("score").notNull().default(0),
   progress: real("progress").notNull().default(0),
+  positionX: real("position_x").notNull().default(800),
   finishPosition: integer("finish_position"),
   isReady: integer("is_ready", { mode: "boolean" }).notNull().default(false),
   lastSeenAt: text("last_seen_at").notNull().default(sql`CURRENT_TIMESTAMP`),

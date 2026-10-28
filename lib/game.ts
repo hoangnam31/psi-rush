@@ -1,9 +1,9 @@
 export const MAPS = [
-  { id: "neon", name: "Neon Knockout", subtitle: "Đại lộ va đập", sky: "#24105f", floor: "#8b5cf6", accent: "#ff3d9a" },
-  { id: "sky", name: "Sky Spinner", subtitle: "Chong chóng trên mây", sky: "#176baf", floor: "#53c9f5", accent: "#ffe14a" },
-  { id: "jungle", name: "Jungle Rumble", subtitle: "Rừng già náo loạn", sky: "#0f5f53", floor: "#45c77e", accent: "#ffb238" },
-  { id: "ice", name: "Ice Breaker", subtitle: "Đường băng siêu trượt", sky: "#2756a6", floor: "#a6edff", accent: "#ffffff" },
-  { id: "lava", name: "Lava Leap", subtitle: "Nhảy qua biển lửa", sky: "#5a1522", floor: "#c84930", accent: "#ffdd42" },
+  { id: "neon", name: "Neon Gauntlet", subtitle: "Đường đua va đập hỗn loạn", sky: "#24105f", floor: "#8b5cf6", accent: "#ff3d9a" },
+  { id: "sky", name: "Sky Ring Run", subtitle: "Nhảy qua chuỗi đảo tròn lơ lửng", sky: "#176baf", floor: "#53c9f5", accent: "#ffe14a" },
+  { id: "jungle", name: "Caro Sụp Đổ", subtitle: "Ô sàn cảnh báo rồi biến mất", sky: "#0f5f53", floor: "#45c77e", accent: "#ffb238" },
+  { id: "ice", name: "Ice Drift", subtitle: "Đường trượt và tường quét ngang", sky: "#2756a6", floor: "#a6edff", accent: "#ffffff" },
+  { id: "lava", name: "Đảo Xoay Sinh Tồn", subtitle: "Vòng tròn xoay đẩy người xuống vực", sky: "#5a1522", floor: "#c84930", accent: "#ffdd42" },
 ] as const;
 
 export type RoomStatus = "waiting" | "racing" | "results" | "finished";

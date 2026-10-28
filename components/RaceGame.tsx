@@ -9,7 +9,7 @@ type Props = {
   players: Player[];
   mapId: string | null;
   round: number;
-  onProgress: (value: number) => void;
+  onProgress: (value: number, positionX: number) => void;
   onFinish: (timeMs: number) => void;
 };
 
@@ -20,7 +20,9 @@ type Obstacle = {
 };
 type Spinner = { x: number; y: number; len: number; speed: number; phase: number; color: string };
 type Pit = { x: number; y: number; w: number; h: number };
+type SpecialZone = { kind: "tiles" | "rings" | "arena"; x: number; y: number; w: number; h: number; phase: number };
 type Particle = { x: number; y: number; vx: number; vy: number; life: number; color: string };
+type RemoteState = { x: number; y: number; targetX: number; targetY: number; vx: number; vy: number; targetAt: number };
 
 const COURSE = 10000;
 const COURSE_W = 1600;
@@ -42,10 +44,26 @@ function buildCourse(id: string) {
   const obstacles: Obstacle[] = [];
   const spinners: Spinner[] = [];
   const pits: Pit[] = [];
+  const zones: SpecialZone[] = [];
 
-  for (let zone = 1; zone <= 12; zone++) {
+  if (id === "jungle") {
+    [1350, 4050, 6750].forEach((y, index) => zones.push({ kind: "tiles", x: 0, y, w: COURSE_W, h: 900, phase: seed * .01 + index * 1.7 }));
+    [2850, 5550, 8550].forEach((y, index) => obstacles.push({ x: 250 + index * 310, y, w: 180, h: 82, kind: "bumper", color: colors[index % colors.length], phase: index }));
+  } else if (id === "sky") {
+    [1150, 3400, 5650, 7900].forEach((y, index) => {
+      zones.push({ kind: "rings", x: 0, y, w: COURSE_W, h: 1120, phase: index });
+      spinners.push({ x: COURSE_W / 2, y: y + 555, len: 205, speed: (index % 2 ? -1 : 1) * (1.45 + index * .18), phase: index, color: colors[index % colors.length] });
+    });
+  } else if (id === "lava") {
+    [1450, 4300, 7150].forEach((y, index) => {
+      zones.push({ kind: "arena", x: 0, y, w: COURSE_W, h: 1220, phase: index });
+      spinners.push({ x: COURSE_W / 2, y: y + 610, len: 455, speed: (index % 2 ? -1 : 1) * (1.65 + index * .28), phase: index * .8, color: index % 2 ? "#ffe14a" : "#ff6a3d" });
+    });
+  }
+
+  for (let zone = 1; zone <= (id === "neon" || id === "ice" ? 12 : 0); zone++) {
     const y = 650 + zone * 720 + (seed * zone) % 145;
-    const type = (zone + seed) % 4;
+    const type = id === "ice" ? (zone % 2 ? 2 : 1) : (zone + seed) % 4;
     if (type === 0) {
       const gapWidth = 390;
       const gap = 160 + (seed * zone * 13) % (COURSE_W - gapWidth - 320);
@@ -86,6 +104,7 @@ function buildCourse(id: string) {
     obstacles: obstacles.filter((obstacle) => obstacle.y + obstacle.h <= courseLimit),
     spinners: spinners.filter((spinner) => spinner.y + spinner.len <= courseLimit),
     pits: pits.filter((pit) => pit.y + pit.h <= courseLimit),
+    zones: zones.filter((zone) => zone.y + zone.h <= courseLimit),
   };
 }
 
@@ -127,8 +146,9 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
       dashCd: 0, dashTime: 0, mana: 100, lastJump: -Infinity,
       falling: false, fallTime: 0, fallPit: null as Pit | null, checkpoint: 80, checkpointIndex: 0,
     };
-    const { obstacles, spinners, pits } = buildCourse(map.id);
+    const { obstacles, spinners, pits, zones } = buildCourse(map.id);
     const particles: Particle[] = [];
+    const remoteStates = new Map<string, RemoteState>();
     const keys: Record<string, boolean> = {};
 
     const down = (event: KeyboardEvent) => {
@@ -234,11 +254,39 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
       return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
     }
 
+    function updateRemotePlayers(now: number, dt: number) {
+      const active = new Set<string>();
+      for (const other of playersRef.current) {
+        if (other.id === me.id) continue;
+        active.add(other.id);
+        const targetX = Number.isFinite(other.positionX) ? other.positionX : 150 + hash(other.id) % (COURSE_W - 300);
+        const targetY = other.progress / 100 * COURSE;
+        let state = remoteStates.get(other.id);
+        if (!state) {
+          state = { x: targetX, y: targetY, targetX, targetY, vx: 0, vy: 0, targetAt: now };
+          remoteStates.set(other.id, state);
+        } else if (Math.abs(targetX - state.targetX) > .01 || Math.abs(targetY - state.targetY) > .01) {
+          const sampleTime = Math.max(.08, Math.min(1.2, (now - state.targetAt) / 1000));
+          state.vx = Math.max(-900, Math.min(900, (targetX - state.targetX) / sampleTime));
+          state.vy = Math.max(-650, Math.min(900, (targetY - state.targetY) / sampleTime));
+          state.targetX = targetX; state.targetY = targetY; state.targetAt = now;
+        }
+        const predictionTime = Math.min(.32, Math.max(0, (now - state.targetAt) / 1000));
+        const predictedX = state.targetX + state.vx * predictionTime;
+        const predictedY = state.targetY + state.vy * predictionTime;
+        const easing = 1 - Math.exp(-dt * 11);
+        state.x += (predictedX - state.x) * easing;
+        state.y += (predictedY - state.y) * easing;
+      }
+      for (const id of remoteStates.keys()) if (!active.has(id)) remoteStates.delete(id);
+    }
+
     function collideWithPlayers(now: number) {
       for (const other of playersRef.current) {
         if (other.id === me.id || other.progress >= 100) continue;
-        const otherY = other.progress / 100 * COURSE;
-        const otherX = 150 + hash(other.id) % (COURSE_W - 300);
+        const remote = remoteStates.get(other.id);
+        const otherY = remote?.y ?? other.progress / 100 * COURSE;
+        const otherX = remote?.x ?? other.positionX ?? 150 + hash(other.id) % (COURSE_W - 300);
         let dx = p.x - otherX, dy = p.y - otherY;
         let distance = Math.hypot(dx, dy);
         if (distance >= PLAYER_R * 2) continue;
@@ -263,6 +311,45 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
       return pits.find((pit) => p.x > pit.x + 10 && p.x < pit.x + pit.w - 10 && p.y > pit.y + 10 && p.y < pit.y + pit.h - 10) ?? null;
     }
 
+    function getTileRects(zone: SpecialZone) {
+      const columns = 5, rows = 3, gap = 22, padX = 70, padY = 28;
+      const width = (zone.w - padX * 2 - gap * (columns - 1)) / columns;
+      const height = (zone.h - padY * 2 - gap * (rows - 1)) / rows;
+      return Array.from({ length: columns * rows }, (_, index) => ({
+        x: zone.x + padX + (index % columns) * (width + gap),
+        y: zone.y + padY + Math.floor(index / columns) * (height + gap),
+        w: width, h: height, index,
+      }));
+    }
+
+    function tilePhase(zone: SpecialZone, index: number, time: number) {
+      return (time * .72 + zone.phase + index * .83) % 6;
+    }
+
+    function getRingCenters(zone: SpecialZone) {
+      return [
+        { x: 510, y: zone.y + 150, r: 225 },
+        { x: 1050, y: zone.y + 405, r: 225 },
+        { x: 535, y: zone.y + 685, r: 225 },
+        { x: 1065, y: zone.y + 965, r: 225 },
+      ];
+    }
+
+    function getSpecialPitAtPlayer(time: number) {
+      const zone = zones.find((item) => p.x > item.x && p.x < item.x + item.w && p.y > item.y && p.y < item.y + item.h);
+      if (!zone) return null;
+      let safe = false;
+      if (zone.kind === "tiles") {
+        const tile = getTileRects(zone).find((item) => p.x > item.x && p.x < item.x + item.w && p.y > item.y && p.y < item.y + item.h);
+        safe = Boolean(tile && tilePhase(zone, tile.index, time) < 4.45);
+      } else if (zone.kind === "rings") {
+        safe = getRingCenters(zone).some((ring) => Math.hypot(p.x - ring.x, p.y - ring.y) < ring.r - 10);
+      } else {
+        safe = Math.hypot(p.x - COURSE_W / 2, p.y - (zone.y + zone.h / 2)) < 540;
+      }
+      return safe ? null : { x: zone.x, y: zone.y, w: zone.w, h: zone.h };
+    }
+
     function beginFall(now: number, pit: Pit | null) {
       if (p.falling) return;
       p.falling = true; p.fallTime = 0; p.fallPit = pit; p.vx *= .28; p.vy *= .28; p.vz = -120;
@@ -273,7 +360,7 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
       p.x = COURSE_W / 2; p.y = p.checkpoint + 45; p.vx = 0; p.vy = 0; p.z = 0; p.vz = 0;
       p.falling = false; p.fallTime = 0; p.fallPit = null; p.stun = .55; p.hitCd = .8;
       cameraX = p.x; cameraY = p.y;
-      progressCb.current(Math.min(99.8, p.y / COURSE * 100));
+      progressCb.current(Math.min(99.8, p.y / COURSE * 100), p.x);
       burst(p.x, p.y, "#8df6ff", 20); showImpact("HỒI SINH!", now);
     }
 
@@ -286,6 +373,7 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
         window.setTimeout(() => setCountdown(""), 520);
       }
       const raceSeconds = (now - start) / 1000;
+      updateRemotePlayers(now, dt);
       p.stun = Math.max(0, p.stun - dt);
       p.hitCd = Math.max(0, p.hitCd - dt);
       p.dashCd = Math.max(0, p.dashCd - dt);
@@ -367,7 +455,7 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
             break;
           }
         }
-        const activePit = p.z < 48 ? getPitAtPlayer() : null;
+        const activePit = p.z < 48 ? getPitAtPlayer() ?? getSpecialPitAtPlayer(raceSeconds) : null;
         if (p.x < -PLAYER_R * 1.5 || p.x > COURSE_W + PLAYER_R * 1.5 || p.y < -80 || activePit) beginFall(now, activePit);
         cameraX = p.x; cameraY = p.y;
       }
@@ -383,12 +471,12 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
 
       const progress = Math.max(0, Math.min(100, p.y / COURSE * 100));
       const syncDelay = playersRef.current.length > 100 ? 700 : playersRef.current.length > 50 ? 500 : 300;
-      if (now - lastSync > syncDelay) { lastSync = now; progressCb.current(progress); }
+      if (now - lastSync > syncDelay) { lastSync = now; progressCb.current(progress, p.x); }
       if (now - lastUi > 80) {
         lastUi = now;
         setLocalProgress(progress); setDash(Math.max(0, (1 - p.dashCd / 3) * 100)); setMana(p.mana); setElapsed(now - start);
       }
-      if (p.y >= COURSE && !finished) { finished = true; progressCb.current(100); finishCb.current(now - start); }
+      if (p.y >= COURSE && !finished) { finished = true; progressCb.current(100, p.x); finishCb.current(now - start); }
     }
 
     function hash(value: string) {
@@ -410,6 +498,12 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
       ctx.save();
       if (shake > 0) ctx.translate((Math.random() - .5) * shake * 14, (Math.random() - .5) * shake * 10);
       drawWorld(ctx, w, h, now, cameraY, baseScale, sx, sy, perspective);
+
+      for (const zone of zones) {
+        const y = sy(zone.y);
+        if (y < -zone.h * baseScale - 200 || y > h + 200) continue;
+        drawSpecialZone(ctx, zone, raceSeconds, sx, sy, perspective, now);
+      }
 
       for (const pit of [...pits].sort((a, b) => b.y - a.y)) {
         const y = sy(pit.y);
@@ -435,7 +529,10 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
 
       const visiblePlayers = playersRef.current
         .filter((other) => other.id !== me.id)
-        .map((other) => ({ ...other, worldY: other.progress / 100 * COURSE, worldX: 150 + hash(other.id) % (COURSE_W - 300) }))
+        .map((other) => {
+          const remote = remoteStates.get(other.id);
+          return { ...other, worldY: remote?.y ?? other.progress / 100 * COURSE, worldX: remote?.x ?? other.positionX ?? 150 + hash(other.id) % (COURSE_W - 300) };
+        })
         .filter((other) => sy(other.worldY) > -90 && sy(other.worldY) < h + 100)
         .sort((a, b) => b.worldY - a.worldY);
       for (const other of visiblePlayers) {
@@ -467,10 +564,6 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
       }
       ctx.restore();
 
-      ctx.textAlign = "center";
-      ctx.font = "900 11px system-ui";
-      ctx.fillStyle = "rgba(255,255,255,.72)";
-      ctx.fillText(`${map.name.toUpperCase()} · ROUND ${round}`, w / 2, 34);
     }
 
     function drawWorld(
@@ -557,6 +650,48 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
         context.fillRect(x1 + (x4 - x1) * t + 10, yy, Math.max(0, (x2 + (x3 - x2) * t) - (x1 + (x4 - x1) * t) - 20), 3);
       }
       context.restore();
+    }
+
+    function drawSpecialZone(
+      context: CanvasRenderingContext2D, zone: SpecialZone, time: number,
+      sx: (x: number, y: number) => number, sy: (y: number) => number, perspective: (y: number) => number, now: number,
+    ) {
+      drawPit(context, { x: zone.x, y: zone.y, w: zone.w, h: zone.h }, sx, sy, perspective, now);
+      if (zone.kind === "tiles") {
+        for (const tile of getTileRects(zone)) {
+          const phase = tilePhase(zone, tile.index, time), collapsed = phase >= 4.45, warning = phase >= 3.65;
+          const left = sx(tile.x, tile.y), right = sx(tile.x + tile.w, tile.y);
+          const nearY = sy(tile.y), farY = sy(tile.y + tile.h);
+          context.save(); context.globalAlpha = collapsed ? .13 : 1;
+          context.fillStyle = collapsed ? "#2a1134" : warning ? "#ff5a67" : (tile.index % 2 ? "#60d98d" : "#a4f06b");
+          context.fillRect(left, farY, right - left, nearY - farY);
+          context.strokeStyle = collapsed ? "#a85bba" : "rgba(255,255,255,.7)"; context.lineWidth = Math.max(2, 4 * renderScale); context.strokeRect(left, farY, right - left, nearY - farY);
+          if (warning && !collapsed) {
+            context.fillStyle = "rgba(255,255,255,.72)"; context.font = `900 ${Math.max(10, 18 * renderScale)}px system-ui`; context.textAlign = "center";
+            context.fillText("!", (left + right) / 2, (nearY + farY) / 2 + 6);
+          }
+          context.restore();
+        }
+      } else if (zone.kind === "rings") {
+        for (const [index, ring] of getRingCenters(zone).entries()) {
+          const x = sx(ring.x, ring.y), y = sy(ring.y), radius = ring.r * renderScale;
+          context.fillStyle = "rgba(5,10,40,.45)"; context.beginPath(); context.arc(x + 8, y + 10, radius, 0, Math.PI * 2); context.fill();
+          const gradient = context.createRadialGradient(x - radius * .25, y - radius * .3, 5, x, y, radius);
+          gradient.addColorStop(0, "#d8f9ff"); gradient.addColorStop(.46, index % 2 ? "#46bce8" : "#715df3"); gradient.addColorStop(1, "#253484");
+          context.fillStyle = gradient; context.beginPath(); context.arc(x, y, radius, 0, Math.PI * 2); context.fill();
+          context.strokeStyle = index % 2 ? "#ffe14a" : "#ffffff"; context.lineWidth = Math.max(3, 9 * renderScale); context.stroke();
+          context.strokeStyle = "rgba(255,255,255,.28)"; context.lineWidth = Math.max(2, 4 * renderScale); context.beginPath(); context.arc(x, y, radius * .58, 0, Math.PI * 2); context.stroke();
+        }
+      } else {
+        const cx = sx(COURSE_W / 2, zone.y + zone.h / 2), cy = sy(zone.y + zone.h / 2), radius = 540 * renderScale;
+        const gradient = context.createRadialGradient(cx - radius * .25, cy - radius * .3, 10, cx, cy, radius);
+        gradient.addColorStop(0, "#ffb13b"); gradient.addColorStop(.62, "#d44a32"); gradient.addColorStop(1, "#68152a");
+        context.fillStyle = "rgba(15,2,18,.5)"; context.beginPath(); context.arc(cx + 10, cy + 12, radius, 0, Math.PI * 2); context.fill();
+        context.fillStyle = gradient; context.beginPath(); context.arc(cx, cy, radius, 0, Math.PI * 2); context.fill();
+        context.strokeStyle = "#ffdd42"; context.lineWidth = Math.max(4, 11 * renderScale); context.stroke();
+        context.strokeStyle = "rgba(255,255,255,.22)"; context.lineWidth = Math.max(2, 4 * renderScale);
+        for (const fraction of [.35, .68]) { context.beginPath(); context.arc(cx, cy, radius * fraction, 0, Math.PI * 2); context.stroke(); }
+      }
     }
 
     function clipPit(
@@ -761,7 +896,7 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
     {impact && <div className="impact-callout">{impact}</div>}
     <div className="player-hud">
       <div><small>TIẾN ĐỘ</small><b>{Math.min(100, Math.round(localProgress))}%</b></div>
-      <div className="hud-map"><span>{map.name}</span><i><b style={{ width: `${localProgress}%` }}/></i></div>
+      <div className="hud-map"><span>{map.name} · ROUND {round}</span><i><b style={{ width: `${localProgress}%` }}/></i></div>
       <div><small>THỜI GIAN</small><b>{(elapsed / 1000).toFixed(1)}s</b></div>
     </div>
     <div className="control-hint"><span><b>WASD</b> DI CHUYỂN</span><span><b>SPACE</b> NHẢY</span><span><b>SHIFT</b> BOOST</span></div>

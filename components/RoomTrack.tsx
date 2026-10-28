@@ -12,16 +12,18 @@ function stableLane(id: string) {
 export function RoomTrack({ players, mapId }: { players: Player[]; mapId: string | null }) {
   const map = MAPS.find((item) => item.id === mapId) ?? MAPS[0];
   const obstacles = [18, 34, 51, 68, 84];
-  const targets = useRef(new Map<string, number>());
-  const displayed = useRef(new Map<string, number>());
+  const targets = useRef(new Map<string, { progress: number; lane: number }>());
+  const displayed = useRef(new Map<string, { progress: number; lane: number }>());
   const nodes = useRef(new Map<string, HTMLDivElement>());
 
   useEffect(() => {
     const active = new Set<string>();
     for (const player of players) {
       active.add(player.id);
-      targets.current.set(player.id, Math.min(100, Math.max(0, player.progress)));
-      if (!displayed.current.has(player.id)) displayed.current.set(player.id, player.progress);
+      const lane = Number.isFinite(player.positionX) ? 8 + Math.max(0, Math.min(1600, player.positionX)) / 1600 * 84 : stableLane(player.id);
+      const target = { progress: Math.min(100, Math.max(0, player.progress)), lane };
+      targets.current.set(player.id, target);
+      if (!displayed.current.has(player.id)) displayed.current.set(player.id, target);
     }
     for (const id of targets.current.keys()) {
       if (!active.has(id)) { targets.current.delete(id); displayed.current.delete(id); nodes.current.delete(id); }
@@ -37,10 +39,13 @@ export function RoomTrack({ players, mapId }: { players: Player[]; mapId: string
       const easing = 1 - Math.exp(-dt * 7.5);
       for (const [id, target] of targets.current) {
         const current = displayed.current.get(id) ?? target;
-        const next = Math.abs(target - current) < .015 ? target : current + (target - current) * easing;
+        const next = {
+          progress: Math.abs(target.progress - current.progress) < .015 ? target.progress : current.progress + (target.progress - current.progress) * easing,
+          lane: Math.abs(target.lane - current.lane) < .015 ? target.lane : current.lane + (target.lane - current.lane) * easing,
+        };
         displayed.current.set(id, next);
         const node = nodes.current.get(id);
-        if (node) node.style.bottom = `calc(${Math.min(97, next)}% - 12px)`;
+        if (node) { node.style.bottom = `calc(${Math.min(97, next.progress)}% - 12px)`; node.style.left = `${next.lane}%`; }
       }
       frame = requestAnimationFrame(animate);
     };
@@ -57,7 +62,7 @@ export function RoomTrack({ players, mapId }: { players: Player[]; mapId: string
         className="track-runner"
         key={player.id}
         ref={(node) => { if (node) nodes.current.set(player.id, node); else nodes.current.delete(player.id); }}
-        style={{ bottom: `calc(${Math.min(97, displayed.current.get(player.id) ?? player.progress)}% - 12px)`, left: `${stableLane(player.id)}%`, "--bean": player.color } as React.CSSProperties}
+        style={{ bottom: `calc(${Math.min(97, displayed.current.get(player.id)?.progress ?? player.progress)}% - 12px)`, left: `${displayed.current.get(player.id)?.lane ?? stableLane(player.id)}%`, "--bean": player.color } as React.CSSProperties}
       >
         <span>{player.name}</span><i><b/><b/></i>
       </div>)}

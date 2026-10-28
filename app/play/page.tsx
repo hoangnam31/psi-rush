@@ -13,7 +13,7 @@ export default function PlayPage(){
   const refresh=useCallback(async()=>{if(!code)return;try{setState(await getRoomState(code));setError("")}catch(e){setError(e instanceof Error?e.message:"Mất kết nối")}},[code]);
   useEffect(()=>{refresh();const id=setInterval(refresh,650);return()=>clearInterval(id)},[refresh]);
   const me=useMemo(()=>state?.players.find(p=>p.id===session?.playerId),[state,session]);
-  const sendProgress=useCallback((progress:number)=>{if(!session)return;roomAction(code,{action:"progress",playerId:session.playerId,playerToken:session.playerToken,progress}).catch(()=>{})},[code,session]);
+  const sendProgress=useCallback((progress:number,positionX:number)=>{if(!session)return;roomAction(code,{action:"progress",playerId:session.playerId,playerToken:session.playerToken,progress,positionX}).catch(()=>{})},[code,session]);
   const sendFinish=useCallback(async(timeMs:number)=>{if(!session)return;try{const result=await roomAction<{position:number;points:number}>(code,{action:"finish",playerId:session.playerId,playerToken:session.playerToken,timeMs});setFinish(result);await refresh()}catch(e){setError(e instanceof Error?e.message:"Không ghi được kết quả")}},[code,session,refresh]);
   useEffect(()=>{setFinish(null)},[state?.room.currentRound]);
   if(!state||!me)return <main className="loading-shell"><div className="loader-bean"/><p>{error||"ĐANG KẾT NỐI VÀO PHÒNG..."}</p></main>;

@@ -17,7 +17,7 @@ export async function GET(request: Request, context: Context) {
     const db = getDb();
     const roster = await db.select({
       id: players.id, name: players.name, color: players.color, score: players.score,
-      progress: players.progress, finishPosition: players.finishPosition,
+      progress: players.progress, positionX: players.positionX, finishPosition: players.finishPosition,
       isReady: players.isReady, lastSeenAt: players.lastSeenAt,
     }).from(players).where(eq(players.roomId, room.id)).orderBy(desc(players.score), desc(players.progress));
     const results = await db.select().from(roundResults).where(eq(roundResults.roomId, room.id)).orderBy(desc(roundResults.roundNumber), asc(roundResults.position));
@@ -59,7 +59,7 @@ export async function POST(request: Request, context: Context) {
         if (nextRound > room.totalRounds) {
           await db.update(rooms).set({ status: "finished", updatedAt: sql`CURRENT_TIMESTAMP` }).where(eq(rooms.id, room.id));
         } else {
-          await db.update(players).set({ progress: 0, finishPosition: null }).where(eq(players.roomId, room.id));
+          await db.update(players).set({ progress: 0, positionX: 800, finishPosition: null }).where(eq(players.roomId, room.id));
           await db.update(rooms).set({ status: "racing", currentRound: nextRound, currentMap: pickMap(pool, room.currentMap), updatedAt: sql`CURRENT_TIMESTAMP` }).where(eq(rooms.id, room.id));
         }
       } else if (action === "endRound") {
@@ -68,7 +68,7 @@ export async function POST(request: Request, context: Context) {
         await db.update(rooms).set({ status: "finished", updatedAt: sql`CURRENT_TIMESTAMP` }).where(eq(rooms.id, room.id));
       } else {
         await db.delete(roundResults).where(eq(roundResults.roomId, room.id));
-        await db.update(players).set({ score: 0, progress: 0, finishPosition: null }).where(eq(players.roomId, room.id));
+        await db.update(players).set({ score: 0, progress: 0, positionX: 800, finishPosition: null }).where(eq(players.roomId, room.id));
         await db.update(rooms).set({ status: "waiting", currentRound: 0, currentMap: null, updatedAt: sql`CURRENT_TIMESTAMP` }).where(eq(rooms.id, room.id));
       }
       return Response.json({ ok: true });
@@ -81,7 +81,8 @@ export async function POST(request: Request, context: Context) {
       await db.update(players).set({ isReady: Boolean(body.ready), lastSeenAt: sql`CURRENT_TIMESTAMP` }).where(eq(players.id, player.id));
     } else if (action === "progress") {
       const progress = Math.max(0, Math.min(99.8, Number(body.progress) || 0));
-      await db.update(players).set({ progress, lastSeenAt: sql`CURRENT_TIMESTAMP` }).where(eq(players.id, player.id));
+      const positionX = Math.max(-80, Math.min(1680, Number(body.positionX) || 800));
+      await db.update(players).set({ progress, positionX, lastSeenAt: sql`CURRENT_TIMESTAMP` }).where(eq(players.id, player.id));
     } else if (action === "finish") {
       const existing = (await db.select().from(roundResults).where(and(eq(roundResults.roomId, room.id), eq(roundResults.roundNumber, room.currentRound), eq(roundResults.playerId, player.id))).limit(1))[0];
       if (!existing) {

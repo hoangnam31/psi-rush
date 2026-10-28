@@ -1,0 +1,1 @@
+ALTER TABLE `players` ADD `position_x` real DEFAULT 800 NOT NULL;
