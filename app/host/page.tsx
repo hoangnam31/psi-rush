@@ -15,7 +15,14 @@ export default function HostPage() {
   const [title, setTitle] = useState("Friday Wobble Cup"); const [maxPlayers, setMaxPlayers] = useState(50);
   const [rounds, setRounds] = useState(3); const [maps, setMaps] = useState<string[]>(MAPS.map(m=>m.id));
 
-  useEffect(()=>{ const raw=localStorage.getItem("wobble_host"); if(raw) try{setSession(JSON.parse(raw))}catch{} },[]);
+  useEffect(()=>{
+    const params=new URLSearchParams(location.search);
+    if(params.get("new")==="1"){
+      localStorage.removeItem("wobble_host");setSession(null);setState(null);
+      history.replaceState(null,"","/host");return;
+    }
+    const raw=localStorage.getItem("wobble_host");if(raw)try{setSession(JSON.parse(raw))}catch{localStorage.removeItem("wobble_host")}
+  },[]);
   const refresh = useCallback(async()=>{
     if(!session)return; try{setState(await getRoomState(session.code,session.hostToken));setError("")}catch(e){setError(e instanceof Error?e.message:"Mất kết nối")}
   },[session]);
@@ -30,6 +37,7 @@ export default function HostPage() {
   }
   async function act(action:string){if(!session)return;setBusy(true);try{await roomAction(session.code,{action,hostToken:session.hostToken});await refresh()}catch(e){setError(e instanceof Error?e.message:"Lỗi")}finally{setBusy(false)}}
   function leave(){localStorage.removeItem("wobble_host");setSession(null);setState(null)}
+  function createFreshRoom(){localStorage.removeItem("wobble_host");setSession(null);setState(null);setError("");history.replaceState(null,"","/host")}
 
   if(!session) return <main className="setup-shell">
     <header className="app-nav"><WobbleLogo compact/><span className="view-tag admin">ADMIN SETUP</span></header>
@@ -61,7 +69,7 @@ export default function HostPage() {
       <Leaderboard players={ranked} currentResults={currentResults} title="XẾP HẠNG TRỰC TIẾP"/>
     </section>}
     {(room.status==="results"||room.status==="finished")&&<section className="results-admin">
-      <div className="results-hero"><span className="eyebrow">{room.status==="finished"?"GIẢI ĐẤU KẾT THÚC":`KẾT QUẢ ROUND ${room.currentRound}`}</span><h2>{room.status==="finished"?"NHÀ VÔ ĐỊCH":"ROUND COMPLETE!"}</h2><Podium players={ranked}/><div className="result-actions">{room.status!=="finished"&&room.currentRound<room.totalRounds&&<button className="primary-action" onClick={()=>act("next")}>ROUND TIẾP THEO →</button>}{room.status!=="finished"&&<button className="secondary-action" onClick={()=>act("finishGame")}>KẾT THÚC GAME</button>}{room.status==="finished"&&<button className="primary-action" onClick={()=>act("reset")}>CHƠI GIẢI MỚI ↻</button>}</div></div>
+      <div className="results-hero"><span className="eyebrow">{room.status==="finished"?"GIẢI ĐẤU KẾT THÚC":`KẾT QUẢ ROUND ${room.currentRound}`}</span><h2>{room.status==="finished"?"NHÀ VÔ ĐỊCH":"ROUND COMPLETE!"}</h2><Podium players={ranked}/><div className="result-actions">{room.status!=="finished"&&room.currentRound<room.totalRounds&&<button className="primary-action" onClick={()=>act("next")}>ROUND TIẾP THEO →</button>}{room.status!=="finished"&&<button className="secondary-action" onClick={()=>act("finishGame")}>KẾT THÚC GAME</button>}{room.status==="finished"&&<><button className="secondary-action" onClick={()=>act("reset")}>CHƠI LẠI CÙNG NHÓM ↻</button><button className="primary-action" onClick={createFreshRoom}>TẠO PHÒNG MỚI ＋</button></>}</div></div>
       <Leaderboard players={ranked} currentResults={currentResults} title="BẢNG ĐIỂM TỔNG"/>
     </section>}
     {error&&<div className="error-toast">{error}</div>}
