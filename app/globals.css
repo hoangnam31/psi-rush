@@ -35,3 +35,5 @@
 @media(max-width:1000px){.race-actions{right:26px}}
 @media(max-width:650px){.join-box>div{grid-template-columns:minmax(0,1fr) 88px}.join-box>div input,.join-box button{width:100%}.join-box button{min-width:88px}.mana-hud .mana-label{gap:6px}.mana-hud .mana-label span{font-size:6px;letter-spacing:.04em}.mana-hud .mana-label em{font-size:8px}.race-actions{position:static;margin-top:12px;display:flex;justify-content:flex-end}.race-actions button{min-height:50px;padding:0 14px;font-size:9px}.race-actions .danger-action{margin:0}}
 @media(max-width:650px){input,textarea,select{font-size:16px!important}}
+.player-wait section>p{margin:28px 0 0}
+@media(max-width:650px){.player-wait section>p{margin-top:32px}}
