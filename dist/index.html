@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#120b32" />
+    <meta name="description" content="Wobble Rush — cuộc đua vượt chướng ngại vật hỗn loạn dành cho tối đa 200 tay đua." />
+    <title>Wobble Rush — 200 tay đua, 1 nhà vô địch</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main id="app">
+      <canvas id="game" aria-label="Đường đua Wobble Rush"></canvas>
+
+      <div class="topbar" aria-label="Thông tin trận đấu">
+        <a class="brand" href="#" aria-label="Wobble Rush trang chủ">
+          <span class="brand-mark">W</span>
+          <span>WOBBLE <b>RUSH</b></span>
+        </a>
+        <div class="room-chip"><span class="live-dot"></span><span id="roomLabel">SẢNH CHÍNH</span></div>
+        <button class="sound-btn" id="soundBtn" type="button" aria-label="Bật hoặc tắt âm thanh">♪</button>
+      </div>
+
+      <section class="hero" id="hero">
+        <div class="hero-copy">
+          <div class="eyebrow"><span></span> PARTY RACE · TỐI ĐA 200 NGƯỜI</div>
+          <h1>CHẠY.<br /><em>NÉ.</em> VỀ ĐÍCH!</h1>
+          <p>Lao qua búa xoay, sàn trượt và những cú húc không báo trước. Một đường đua. Hai trăm tay chơi. Chỉ một nhà vô địch.</p>
+          <div class="hero-actions">
+            <button class="primary-btn" id="playBtn" type="button"><span>CHƠI NGAY</span><i>→</i></button>
+            <button class="ghost-btn" id="howBtn" type="button">CÁCH CHƠI</button>
+          </div>
+          <div class="trust-row">
+            <span><b>200</b> NGƯỜI / PHÒNG</span>
+            <span><b>60</b> FPS</span>
+            <span><b>0₫</b> CHƠI MIỄN PHÍ</span>
+          </div>
+        </div>
+        <div class="hero-art" aria-hidden="true">
+          <div class="speed-line one"></div><div class="speed-line two"></div><div class="speed-line three"></div>
+          <div class="podium-shadow"></div>
+          <div class="bean bean-main"><div class="face"><i></i><i></i></div><div class="arm left"></div><div class="arm right"></div><div class="leg left"></div><div class="leg right"></div></div>
+          <div class="bean bean-pink"><div class="face"><i></i><i></i></div></div>
+          <div class="bean bean-lime"><div class="face"><i></i><i></i></div></div>
+          <div class="crown">♛</div>
+          <div class="burst">GO!</div>
+        </div>
+      </section>
+
+      <aside class="event-card" id="eventCard">
+        <span class="event-tag">SỰ KIỆN HÔM NAY</span>
+        <strong>ĐẠI LỘ<br />HỖN LOẠN</strong>
+        <div class="event-meta"><span>🏆 x2 ĐIỂM</span><span id="eventTimer">02:14:08</span></div>
+      </aside>
+
+      <section class="panel lobby-panel" id="lobbyPanel" aria-hidden="true">
+        <button class="close-btn" data-close="lobbyPanel" aria-label="Đóng">×</button>
+        <div class="panel-kicker">SẴN SÀNG XUẤT PHÁT?</div>
+        <h2>VÀO ĐƯỜNG ĐUA</h2>
+        <label class="field-label" for="playerName">TÊN TAY ĐUA</label>
+        <div class="name-row">
+          <input id="playerName" maxlength="16" autocomplete="nickname" value="TayĐua" />
+          <div class="color-picker" id="colorPicker" aria-label="Chọn màu nhân vật"></div>
+        </div>
+        <div class="mode-grid">
+          <button class="mode-card active" type="button" data-mode="quick"><span>⚡</span><b>ĐUA NHANH</b><small>Ghép phòng tức thì</small></button>
+          <button class="mode-card" type="button" data-mode="private"><span>🔒</span><b>PHÒNG RIÊNG</b><small>Chơi cùng bạn bè</small></button>
+        </div>
+        <div class="room-code-wrap hidden" id="roomCodeWrap">
+          <label class="field-label" for="roomCode">MÃ PHÒNG</label>
+          <input id="roomCode" maxlength="6" placeholder="VD: RUSH88" />
+        </div>
+        <div class="capacity-row">
+          <label for="capacity">QUY MÔ PHÒNG <b id="capacityValue">200</b></label>
+          <input id="capacity" type="range" min="20" max="200" step="20" value="200" />
+          <div><span>20</span><span>200</span></div>
+        </div>
+        <button class="primary-btn full" id="findBtn" type="button"><span>TÌM TRẬN</span><i>→</i></button>
+        <p class="fineprint">Bản web hiện dùng đối thủ AI để mô phỏng phòng đông người.</p>
+      </section>
+
+      <section class="panel matchmaking-panel" id="matchPanel" aria-hidden="true">
+        <div class="radar"><i></i><i></i><i></i><span>⚡</span></div>
+        <div class="panel-kicker">ĐANG GHÉP TRẬN</div>
+        <h2><span id="joinedCount">1</span> / <span id="targetCount">200</span></h2>
+        <p>Đang tìm những tay đua xứng tầm...</p>
+        <div class="player-dots" id="playerDots"></div>
+        <button class="ghost-btn compact" id="cancelMatch" type="button">HỦY</button>
+      </section>
+
+      <section class="how-modal" id="howModal" aria-hidden="true">
+        <div class="how-card">
+          <button class="close-btn" data-close="howModal" aria-label="Đóng">×</button>
+          <div class="panel-kicker">LUẬT CHƠI SIÊU ĐƠN GIẢN</div>
+          <h2>VỀ ĐÍCH TRƯỚC ĐÁM ĐÔNG</h2>
+          <div class="how-grid">
+            <div><kbd>WASD</kbd><b>DI CHUYỂN</b><small>Hoặc dùng phím mũi tên</small></div>
+            <div><kbd>SPACE</kbd><b>NHẢY</b><small>Vượt vật cản thấp</small></div>
+            <div><kbd>SHIFT</kbd><b>TĂNG TỐC</b><small>Hồi lại sau 3 giây</small></div>
+          </div>
+          <p>Chạm checkpoint để lưu tiến độ. Rơi khỏi đường đua sẽ được đưa về checkpoint gần nhất.</p>
+        </div>
+      </section>
+
+      <section class="game-hud" id="gameHud" aria-hidden="true">
+        <div class="hud-rank"><small>XẾP HẠNG</small><strong><span id="rankValue">1</span><i>/</i><em id="playerTotal">200</em></strong></div>
+        <div class="hud-center"><span id="phaseLabel">ĐẠI LỘ HỖN LOẠN</span><div class="progress-track"><i id="progressFill"></i></div></div>
+        <div class="hud-time"><small>THỜI GIAN</small><strong id="raceTime">00:00.0</strong></div>
+        <div class="dash-meter"><span>SHIFT</span><div><i id="dashFill"></i></div></div>
+      </section>
+
+      <div class="countdown" id="countdown" aria-hidden="true">3</div>
+      <div class="toast" id="toast">CHECKPOINT!</div>
+
+      <section class="finish-panel" id="finishPanel" aria-hidden="true">
+        <div class="confetti" id="confetti"></div>
+        <div class="finish-badge" id="finishBadge">#1</div>
+        <div class="panel-kicker">ĐÃ VỀ ĐÍCH!</div>
+        <h2 id="finishTitle">TUYỆT ĐỈNH!</h2>
+        <p>Bạn hoàn thành đường đua trong <b id="finalTime">00:00.0</b></p>
+        <div class="reward-row"><span>🏆 <b id="xpReward">+750</b> XP</span><span>⭐ <b>+120</b> ĐIỂM</span></div>
+        <button class="primary-btn" id="againBtn" type="button"><span>CHƠI LẠI</span><i>↻</i></button>
+        <button class="ghost-btn compact" id="homeBtn" type="button">VỀ SẢNH</button>
+      </section>
+
+      <div class="mobile-controls" id="mobileControls" aria-hidden="true">
+        <div class="joystick" id="joystick"><i id="joystickKnob"></i></div>
+        <button id="jumpBtn">↑<small>NHẢY</small></button>
+        <button id="dashBtn">»<small>BOOST</small></button>
+      </div>
+    </main>
+    <script src="./game.js"></script>
+  </body>
+</html>
