@@ -23,6 +23,7 @@ type Obstacle = {
 type Spinner = { x: number; y: number; len: number; speed: number; phase: number; color: string };
 type Pit = { x: number; y: number; w: number; h: number };
 type SpecialZone = { kind: "tiles" | "rings" | "arena"; x: number; y: number; w: number; h: number; phase: number };
+type RingPlatform = { x: number; y: number; r: number; speed: number; phase: number };
 type Particle = { x: number; y: number; vx: number; vy: number; life: number; color: string };
 type RemoteState = { x: number; y: number; targetX: number; targetY: number; vx: number; vy: number; targetAt: number };
 
@@ -37,6 +38,7 @@ const PIT_LENGTH = 180;
 const FINISH_CLEARANCE = 650;
 const SURVIVAL_Y = 3900;
 const SURVIVAL_H = 2200;
+const EDGE_SUPPORT = PLAYER_R * .68;
 
 function mapSeed(id: string) {
   return [...id].reduce((sum, char) => sum + char.charCodeAt(0), 0);
@@ -346,7 +348,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
     }
 
     function getPitAtPlayer() {
-      return pits.find((pit) => p.x > pit.x + 10 && p.x < pit.x + pit.w - 10 && p.y > pit.y + 10 && p.y < pit.y + pit.h - 10) ?? null;
+      return pits.find((pit) => p.x > pit.x + EDGE_SUPPORT && p.x < pit.x + pit.w - EDGE_SUPPORT && p.y > pit.y + EDGE_SUPPORT && p.y < pit.y + pit.h - EDGE_SUPPORT) ?? null;
     }
 
     function getTileRects(zone: SpecialZone) {
@@ -359,13 +361,28 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       return { collapsed: time >= dropAt, warning: time >= dropAt - 2.4 };
     }
 
-    function getRingCenters(zone: SpecialZone) {
+    function getRingCenters(zone: SpecialZone): RingPlatform[] {
       return [
-        { x: 510, y: zone.y + 150, r: 225 },
-        { x: 1050, y: zone.y + 405, r: 225 },
-        { x: 535, y: zone.y + 685, r: 225 },
-        { x: 1065, y: zone.y + 965, r: 225 },
+        { x: 510, y: zone.y + 150, r: 225, speed: .43 + zone.phase * .045, phase: zone.phase * .7 },
+        { x: 1050, y: zone.y + 405, r: 225, speed: -.49 - zone.phase * .045, phase: 1.2 + zone.phase * .7 },
+        { x: 535, y: zone.y + 685, r: 225, speed: .54 + zone.phase * .045, phase: 2.4 + zone.phase * .7 },
+        { x: 1065, y: zone.y + 965, r: 225, speed: -.59 - zone.phase * .045, phase: 3.6 + zone.phase * .7 },
       ];
+    }
+
+    function circleTouchesRect(x: number, y: number, radius: number, rect: { x: number; y: number; w: number; h: number }) {
+      const nearX = Math.max(rect.x, Math.min(x, rect.x + rect.w));
+      const nearY = Math.max(rect.y, Math.min(y, rect.y + rect.h));
+      return Math.hypot(x - nearX, y - nearY) <= radius;
+    }
+
+    function getSupportingRing() {
+      for (const zone of zones) {
+        if (zone.kind !== "rings") continue;
+        const ring = getRingCenters(zone).find((item) => Math.hypot(p.x - item.x, p.y - item.y) <= item.r + EDGE_SUPPORT);
+        if (ring) return ring;
+      }
+      return null;
     }
 
     function getSpecialPitAtPlayer(time: number) {
@@ -373,12 +390,11 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       if (!zone) return isSurvival && survivalZone ? { x: survivalZone.x, y: survivalZone.y, w: survivalZone.w, h: survivalZone.h } : null;
       let safe = false;
       if (zone.kind === "tiles") {
-        const tile = getTileRects(zone).find((item) => p.x > item.x && p.x < item.x + item.w && p.y > item.y && p.y < item.y + item.h);
-        safe = Boolean(tile && !tileState(tile.index, time).collapsed);
+        safe = getTileRects(zone).some((item) => !tileState(item.index, time).collapsed && circleTouchesRect(p.x, p.y, EDGE_SUPPORT, item));
       } else if (zone.kind === "rings") {
-        safe = getRingCenters(zone).some((ring) => Math.hypot(p.x - ring.x, p.y - ring.y) < ring.r - 10);
+        safe = getRingCenters(zone).some((ring) => Math.hypot(p.x - ring.x, p.y - ring.y) <= ring.r + EDGE_SUPPORT);
       } else {
-        safe = Math.hypot(p.x - COURSE_W / 2, p.y - (zone.y + zone.h / 2)) < 540;
+        safe = Math.hypot(p.x - COURSE_W / 2, p.y - (zone.y + zone.h / 2)) <= 540 + EDGE_SUPPORT;
       }
       return safe ? null : { x: zone.x, y: zone.y, w: zone.w, h: zone.h };
     }
@@ -456,6 +472,19 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
         p.vz -= GRAVITY * dt; p.z += p.vz * dt;
         if (p.z < 0) { p.z = 0; p.vz = 0; }
         p.y = Math.max(-120, p.y);
+
+        if (map.id === "sky" && p.z <= 2) {
+          const ring = getSupportingRing();
+          if (ring) {
+            const dx = p.x - ring.x, dy = p.y - ring.y;
+            const angle = ring.speed * dt * .82;
+            const cosine = Math.cos(angle), sine = Math.sin(angle);
+            p.x = ring.x + dx * cosine - dy * sine;
+            p.y = ring.y + dx * sine + dy * cosine;
+            p.vx += -dy * ring.speed * dt * .24;
+            p.vy += dx * ring.speed * dt * .24;
+          }
+        }
 
         if (map.start === "tiles" && survivalZone) {
           const minX = survivalZone.x + PLAYER_R, maxX = survivalZone.x + survivalZone.w - PLAYER_R;
@@ -735,7 +764,15 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
           gradient.addColorStop(0, "#d8f9ff"); gradient.addColorStop(.46, index % 2 ? "#46bce8" : "#715df3"); gradient.addColorStop(1, "#253484");
           context.fillStyle = gradient; context.beginPath(); context.arc(x, y, radius, 0, Math.PI * 2); context.fill();
           context.strokeStyle = index % 2 ? "#ffe14a" : "#ffffff"; context.lineWidth = Math.max(3, 9 * renderScale); context.stroke();
-          context.strokeStyle = "rgba(255,255,255,.28)"; context.lineWidth = Math.max(2, 4 * renderScale); context.beginPath(); context.arc(x, y, radius * .58, 0, Math.PI * 2); context.stroke();
+          context.save(); context.translate(x, y); context.rotate(time * ring.speed + ring.phase);
+          context.strokeStyle = "rgba(255,255,255,.34)"; context.lineWidth = Math.max(2, 4 * renderScale); context.lineCap = "round";
+          for (let spoke = 0; spoke < 8; spoke++) {
+            context.rotate(Math.PI / 4); context.beginPath(); context.moveTo(radius * .2, 0); context.lineTo(radius * .78, 0); context.stroke();
+          }
+          context.strokeStyle = "rgba(255,225,74,.72)"; context.lineWidth = Math.max(2, 5 * renderScale);
+          context.beginPath(); context.arc(0, 0, radius * .58, -.75, .75); context.stroke();
+          context.restore();
+          context.fillStyle = "rgba(255,255,255,.88)"; context.beginPath(); context.arc(x, y, Math.max(5, radius * .09), 0, Math.PI * 2); context.fill();
         }
       } else {
         const cx = sx(COURSE_W / 2, zone.y + zone.h / 2), cy = sy(zone.y + zone.h / 2), radius = 540 * renderScale;
