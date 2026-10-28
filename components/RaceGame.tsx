@@ -19,11 +19,14 @@ type Obstacle = {
   color: string; amp?: number; speed?: number; phase?: number;
 };
 type Spinner = { x: number; y: number; len: number; speed: number; phase: number; color: string };
+type Pit = { x: number; y: number; w: number; h: number };
 type Particle = { x: number; y: number; vx: number; vy: number; life: number; color: string };
 
 const COURSE = 10000;
-const COURSE_W = 1100;
+const COURSE_W = 1600;
 const START_LINE = 230;
+const PLAYER_R = 38;
+const CHECKPOINTS = [80, 2500, 5000, 7500];
 
 function mapSeed(id: string) {
   return [...id].reduce((sum, char) => sum + char.charCodeAt(0), 0);
@@ -34,41 +37,46 @@ function buildCourse(id: string) {
   const colors = ["#ff3d9a", "#ffe14a", "#35dcff", "#b6f43b"];
   const obstacles: Obstacle[] = [];
   const spinners: Spinner[] = [];
+  const pits: Pit[] = [];
 
   for (let zone = 1; zone <= 12; zone++) {
     const y = 650 + zone * 720 + (seed * zone) % 145;
     const type = (zone + seed) % 4;
     if (type === 0) {
-      const gap = 150 + (seed * zone * 13) % 610;
+      const gapWidth = 390;
+      const gap = 160 + (seed * zone * 13) % (COURSE_W - gapWidth - 320);
       obstacles.push(
-        { x: 0, y, w: gap, h: 120, kind: "block", color: colors[zone % 4] },
-        { x: gap + 210, y, w: COURSE_W - gap - 210, h: 120, kind: "block", color: colors[zone % 4] },
+        { x: 0, y, w: gap, h: 86, kind: "block", color: colors[zone % 4] },
+        { x: gap + gapWidth, y, w: COURSE_W - gap - gapWidth, h: 86, kind: "block", color: colors[zone % 4] },
       );
     } else if (type === 1) {
       spinners.push({
-        x: zone % 2 ? 330 : 770, y, len: 290 + (seed + zone) % 120,
+        x: zone % 2 ? 470 : 1130, y, len: 265 + (seed + zone) % 75,
         speed: (zone % 2 ? 1 : -1) * (1.7 + (zone % 4) * 0.35), phase: zone, color: colors[zone % 4],
       });
     } else if (type === 2) {
       obstacles.push({
-        x: 410, y, w: 280, h: 110, kind: "mover", color: colors[zone % 4],
-        amp: 360, speed: 1.25 + (zone % 3) * 0.28, phase: zone,
+        x: 675, y, w: 250, h: 88, kind: "mover", color: colors[zone % 4],
+        amp: 500, speed: 1.25 + (zone % 3) * 0.28, phase: zone,
       });
     } else {
       obstacles.push(
-        { x: 125 + (zone * 137) % 420, y, w: 260, h: 105, kind: "block", color: colors[zone % 4] },
-        { x: 560 + (zone * 73) % 235, y: y + 245, w: 235, h: 105, kind: "block", color: colors[(zone + 1) % 4] },
+        { x: 150 + (zone * 137) % 620, y, w: 220, h: 88, kind: "block", color: colors[zone % 4] },
+        { x: 880 + (zone * 73) % 370, y: y + 245, w: 210, h: 88, kind: "block", color: colors[(zone + 1) % 4] },
       );
     }
     obstacles.push({
-      x: 170 + (seed * zone * 19) % 760, y: y + 360, w: 105, h: 105,
+      x: 150 + (seed * zone * 19) % 1300, y: y + 360, w: 84, h: 84,
       kind: "bumper", color: colors[(zone + 2) % 4], phase: zone,
     });
     if (zone % 3 === 0) {
-      obstacles.push({ x: 445, y: y + 500, w: 210, h: 110, kind: "pad", color: "#b6f43b" });
+      obstacles.push({ x: 680, y: y + 500, w: 240, h: 100, kind: "pad", color: "#b6f43b" });
+    }
+    if (zone % 4 === 0) {
+      pits.push({ x: 210 + (seed * zone * 23) % 900, y: y + 510, w: 300, h: 220 });
     }
   }
-  return { obstacles, spinners };
+  return { obstacles, spinners, pits };
 }
 
 export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Props) {
@@ -100,10 +108,15 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
     let lastImpact = 0;
     let shake = 0;
     let renderScale = .6;
+    let cameraY = 80;
     let finished = false;
     const readyAt = performance.now() + 3000;
-    const p = { x: COURSE_W / 2, y: 80, vx: 0, vy: 0, z: 0, vz: 0, stun: 0, dashCd: 0, dashTime: 0, mana: 100, lastJump: -Infinity };
-    const { obstacles, spinners } = buildCourse(map.id);
+    const p = {
+      x: COURSE_W / 2, y: 80, vx: 0, vy: 0, z: 0, vz: 0, stun: 0, hitCd: 0,
+      dashCd: 0, dashTime: 0, mana: 100, lastJump: -Infinity,
+      falling: false, fallTime: 0, checkpoint: 80, checkpointIndex: 0,
+    };
+    const { obstacles, spinners, pits } = buildCourse(map.id);
     const particles: Particle[] = [];
     const keys: Record<string, boolean> = {};
 
@@ -147,18 +160,42 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
       window.setTimeout(() => setImpact(""), 520);
     }
 
-    function hitRect(obstacle: Obstacle, obstacleX: number, oldX: number, oldY: number, now: number) {
+    function resolveRect(obstacle: Obstacle, obstacleX: number, now: number) {
       const nearX = Math.max(obstacleX, Math.min(p.x, obstacleX + obstacle.w));
       const nearY = Math.max(obstacle.y, Math.min(p.y, obstacle.y + obstacle.h));
-      if ((p.x - nearX) ** 2 + (p.y - nearY) ** 2 >= 40 ** 2 || p.z >= 58) return false;
-      const side = Math.sign(p.x - (obstacleX + obstacle.w / 2)) || (p.x < COURSE_W / 2 ? -1 : 1);
-      p.x = oldX; p.y = oldY;
-      p.vx = side * (obstacle.kind === "mover" ? 620 : 360);
-      p.vy = -260;
-      p.stun = obstacle.kind === "mover" ? .62 : .36;
-      shake = obstacle.kind === "mover" ? 1 : .62;
-      burst(p.x, p.y, obstacle.color, 12);
-      showImpact(obstacle.kind === "mover" ? "BỊ HÚC!" : "VA CHẠM!", now);
+      let dx = p.x - nearX, dy = p.y - nearY;
+      const distance = Math.hypot(dx, dy);
+      if (distance >= PLAYER_R || p.z >= 58) return false;
+
+      let nx = 0, ny = 0, penetration = 0;
+      if (distance > .001) {
+        nx = dx / distance; ny = dy / distance; penetration = PLAYER_R - distance;
+      } else {
+        const sides = [
+          { gap: Math.abs(p.x - obstacleX), nx: -1, ny: 0 },
+          { gap: Math.abs(obstacleX + obstacle.w - p.x), nx: 1, ny: 0 },
+          { gap: Math.abs(p.y - obstacle.y), nx: 0, ny: -1 },
+          { gap: Math.abs(obstacle.y + obstacle.h - p.y), nx: 0, ny: 1 },
+        ].sort((a, b) => a.gap - b.gap)[0];
+        nx = sides.nx; ny = sides.ny; penetration = PLAYER_R + sides.gap;
+      }
+
+      p.x += nx * (penetration + 1.5);
+      p.y += ny * (penetration + 1.5);
+      const intoSurface = p.vx * nx + p.vy * ny;
+      if (intoSurface < 0) {
+        p.vx -= intoSurface * 1.22 * nx;
+        p.vy -= intoSurface * 1.22 * ny;
+      }
+      if (p.hitCd <= 0) {
+        const force = obstacle.kind === "mover" ? 440 : 185;
+        p.vx += nx * force; p.vy += ny * force;
+        p.stun = obstacle.kind === "mover" ? .34 : .16;
+        p.hitCd = .18;
+        shake = obstacle.kind === "mover" ? .72 : .32;
+        burst(p.x, p.y, obstacle.color, obstacle.kind === "mover" ? 12 : 7);
+        showImpact(obstacle.kind === "mover" ? "BỊ HÚC!" : "VA CHẠM!", now);
+      }
       return true;
     }
 
@@ -166,11 +203,14 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
       const radius = obstacle.w / 2;
       const cx = obstacleX + radius, cy = obstacle.y + radius;
       const dx = p.x - cx, dy = p.y - cy, distance = Math.hypot(dx, dy) || 1;
-      if (distance > radius + 38 || p.z > 68 || p.stun > .32) return;
+      if (distance > radius + PLAYER_R || p.z > 68 || p.hitCd > 0) return;
+      const overlap = radius + PLAYER_R - distance;
+      p.x += dx / distance * (overlap + 2); p.y += dy / distance * (overlap + 2);
       p.vx = dx / distance * 760;
       p.vy = dy / distance * 760;
       p.vz = 260;
       p.stun = .58;
+      p.hitCd = .3;
       shake = .9;
       burst(cx, cy, obstacle.color, 16);
       showImpact("BOING!", now);
@@ -187,7 +227,7 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
       for (const other of playersRef.current) {
         if (other.id === me.id || other.progress >= 100) continue;
         const otherY = other.progress / 100 * COURSE;
-        const otherX = 110 + hash(other.id) % 880;
+        const otherX = 150 + hash(other.id) % (COURSE_W - 300);
         const dx = p.x - otherX, dy = p.y - otherY;
         const distance = Math.hypot(dx, dy) || 1;
         if (distance < 66 && p.z < 45 && p.stun < .18) {
@@ -202,6 +242,24 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
       }
     }
 
+    function isInsidePit() {
+      return pits.some((pit) => p.x > pit.x + 10 && p.x < pit.x + pit.w - 10 && p.y > pit.y + 10 && p.y < pit.y + pit.h - 10);
+    }
+
+    function beginFall(now: number) {
+      if (p.falling) return;
+      p.falling = true; p.fallTime = 0; p.vx *= .5; p.vy *= .5; p.vz = -120;
+      shake = .75; burst(p.x, p.y, "#ab7cff", 14); showImpact("RƠI XUỐNG VỰC!", now);
+    }
+
+    function respawn(now: number) {
+      p.x = COURSE_W / 2; p.y = p.checkpoint + 45; p.vx = 0; p.vy = 0; p.z = 0; p.vz = 0;
+      p.falling = false; p.fallTime = 0; p.stun = .55; p.hitCd = .8;
+      cameraY = p.y;
+      progressCb.current(Math.min(99.8, p.y / COURSE * 100));
+      burst(p.x, p.y, "#8df6ff", 20); showImpact("HỒI SINH!", now);
+    }
+
     function update(dt: number, now: number) {
       const remain = readyAt - now;
       if (remain > 0) { setCountdown(String(Math.ceil(remain / 1000))); return; }
@@ -211,69 +269,92 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
         window.setTimeout(() => setCountdown(""), 520);
       }
       const raceSeconds = (now - start) / 1000;
-      const oldX = p.x, oldY = p.y;
       p.stun = Math.max(0, p.stun - dt);
+      p.hitCd = Math.max(0, p.hitCd - dt);
       p.dashCd = Math.max(0, p.dashCd - dt);
       p.dashTime = Math.max(0, p.dashTime - dt);
 
-      let ix = (keys.d || keys.arrowright ? 1 : 0) - (keys.a || keys.arrowleft ? 1 : 0) + input.current.x;
-      let iy = (keys.w || keys.arrowup ? 1 : 0) - (keys.s || keys.arrowdown ? 1 : 0) + input.current.y;
-      const inputLength = Math.hypot(ix, iy);
-      if (inputLength > 1) { ix /= inputLength; iy /= inputLength; }
-      if (input.current.jump && p.z <= 1 && p.stun <= .2) {
-        if (p.mana >= 25) {
-          p.vz = 650;
-          p.mana -= 25;
-          p.lastJump = now;
-          burst(p.x, p.y, "#8df6ff", 7);
-        } else {
-          showImpact("HẾT MANA!", now);
-        }
-      }
-      input.current.jump = false;
-      if (input.current.dash && p.dashCd <= 0 && p.stun <= .2) { p.dashTime = .35; p.dashCd = 3; burst(p.x, p.y - 25, map.accent, 9); }
-      input.current.dash = false;
-      if (now - p.lastJump > 900 && p.mana < 100) p.mana = Math.min(100, p.mana + 5 * dt);
+      if (p.falling) {
+        p.fallTime += dt;
+        p.x += p.vx * dt; p.y += p.vy * dt;
+        p.z -= (260 + p.fallTime * 520) * dt;
+        cameraY += (p.y - cameraY) * Math.min(1, dt * 4.5);
+        if (p.fallTime >= 1.05) respawn(now);
+      } else {
 
-      const control = p.stun > 0 ? .1 : 1;
-      const acceleration = 1280 * control;
-      const maxSpeed = p.dashTime > 0 ? 850 : (map.id === "ice" ? 420 : 365);
-      p.vx += ix * acceleration * dt;
-      p.vy += iy * acceleration * dt;
-      const friction = Math.pow(map.id === "ice" ? .34 : .055, dt);
-      p.vx *= friction; p.vy *= friction;
-      const speed = Math.hypot(p.vx, p.vy);
-      if (speed > maxSpeed) { p.vx = p.vx / speed * maxSpeed; p.vy = p.vy / speed * maxSpeed; }
-      p.x += p.vx * dt; p.y += p.vy * dt;
-      p.vz -= 1450 * dt; p.z += p.vz * dt;
-      if (p.z < 0) { p.z = 0; p.vz = 0; }
-      p.x = Math.max(38, Math.min(COURSE_W - 38, p.x));
-      p.y = Math.max(0, p.y);
-
-      for (const obstacle of obstacles) {
-        if (Math.abs(p.y - obstacle.y) > 210) continue;
-        const obstacleX = movingX(obstacle, raceSeconds);
-        if (obstacle.kind === "pad") {
-          if (p.x > obstacleX && p.x < obstacleX + obstacle.w && p.y > obstacle.y && p.y < obstacle.y + obstacle.h && p.z < 18) {
-            p.vy = Math.max(p.vy, 790); p.vz = 130; burst(p.x, p.y, obstacle.color, 10); showImpact("BOOST!", now);
+        let ix = (keys.d || keys.arrowright ? 1 : 0) - (keys.a || keys.arrowleft ? 1 : 0) + input.current.x;
+        let iy = (keys.w || keys.arrowup ? 1 : 0) - (keys.s || keys.arrowdown ? 1 : 0) + input.current.y;
+        const inputLength = Math.hypot(ix, iy);
+        if (inputLength > 1) { ix /= inputLength; iy /= inputLength; }
+        if (input.current.jump && p.z <= 1 && p.stun <= .2) {
+          if (p.mana >= 25) {
+            p.vz = 650;
+            p.mana -= 25;
+            p.lastJump = now;
+            burst(p.x, p.y, "#8df6ff", 7);
+          } else {
+            showImpact("HẾT MANA!", now);
           }
-        } else if (obstacle.kind === "bumper") hitBumper(obstacle, obstacleX, now);
-        else hitRect(obstacle, obstacleX, oldX, oldY, now);
+        }
+        input.current.jump = false;
+        if (input.current.dash && p.dashCd <= 0 && p.stun <= .2) { p.dashTime = .35; p.dashCd = 3; burst(p.x, p.y - 25, map.accent, 9); }
+        input.current.dash = false;
+        if (now - p.lastJump > 900 && p.mana < 100) p.mana = Math.min(100, p.mana + 5 * dt);
+
+        const control = p.stun > 0 ? .1 : 1;
+        const acceleration = 1280 * control;
+        const maxSpeed = p.dashTime > 0 ? 850 : (map.id === "ice" ? 420 : 365);
+        p.vx += ix * acceleration * dt;
+        p.vy += iy * acceleration * dt;
+        const friction = Math.pow(map.id === "ice" ? .34 : .055, dt);
+        p.vx *= friction; p.vy *= friction;
+        const speed = Math.hypot(p.vx, p.vy);
+        if (speed > maxSpeed) { p.vx = p.vx / speed * maxSpeed; p.vy = p.vy / speed * maxSpeed; }
+        p.x += p.vx * dt; p.y += p.vy * dt;
+        p.vz -= 1450 * dt; p.z += p.vz * dt;
+        if (p.z < 0) { p.z = 0; p.vz = 0; }
+        p.y = Math.max(-120, p.y);
+
+        for (let pass = 0; pass < 2; pass++) {
+          for (const obstacle of obstacles) {
+            if (Math.abs(p.y - obstacle.y) > 210) continue;
+            const obstacleX = movingX(obstacle, raceSeconds);
+            if (obstacle.kind === "pad") {
+              if (pass === 0 && p.x > obstacleX && p.x < obstacleX + obstacle.w && p.y > obstacle.y && p.y < obstacle.y + obstacle.h && p.z < 18) {
+                p.vy = Math.max(p.vy, 790); p.vz = 130; burst(p.x, p.y, obstacle.color, 10); showImpact("BOOST!", now);
+              }
+            } else if (obstacle.kind === "bumper") {
+              if (pass === 0) hitBumper(obstacle, obstacleX, now);
+            } else resolveRect(obstacle, obstacleX, now);
+          }
+        }
+
+        for (const spinner of spinners) {
+          if (Math.abs(p.y - spinner.y) > spinner.len + 60 || p.hitCd > 0) continue;
+          const angle = raceSeconds * spinner.speed + spinner.phase;
+          const dx = Math.cos(angle) * spinner.len, dy = Math.sin(angle) * spinner.len;
+          if (p.z < 60 && segmentDistance(p.x, p.y, spinner.x - dx, spinner.y - dy, spinner.x + dx, spinner.y + dy) < PLAYER_R + 17) {
+            const direction = Math.sign(Math.cos(angle) * (p.y - spinner.y) - Math.sin(angle) * (p.x - spinner.x)) || 1;
+            p.vx = Math.cos(angle + Math.PI / 2) * direction * 760;
+            p.vy = Math.sin(angle + Math.PI / 2) * direction * 560 - 180;
+            p.vz = 220; p.stun = .7; p.hitCd = .38; shake = 1;
+            burst(p.x, p.y, spinner.color, 18); showImpact("VĂNG RA!", now);
+          }
+        }
+        collideWithPlayers(now);
+
+        for (let index = CHECKPOINTS.length - 1; index >= 1; index--) {
+          if (p.y >= CHECKPOINTS[index] && index > p.checkpointIndex) {
+            p.checkpointIndex = index; p.checkpoint = CHECKPOINTS[index];
+            burst(p.x, p.y, "#45f4ff", 18); showImpact(`CHECKPOINT ${index}!`, now);
+            break;
+          }
+        }
+        if (p.x < -PLAYER_R * 1.5 || p.x > COURSE_W + PLAYER_R * 1.5 || p.y < -80 || (p.z < 48 && isInsidePit())) beginFall(now);
+        cameraY += (p.y - cameraY) * Math.min(1, dt * 5.5);
       }
 
-      for (const spinner of spinners) {
-        if (Math.abs(p.y - spinner.y) > spinner.len + 60 || p.stun > .34) continue;
-        const angle = raceSeconds * spinner.speed + spinner.phase;
-        const dx = Math.cos(angle) * spinner.len, dy = Math.sin(angle) * spinner.len;
-        if (p.z < 60 && segmentDistance(p.x, p.y, spinner.x - dx, spinner.y - dy, spinner.x + dx, spinner.y + dy) < 54) {
-          const direction = Math.sign(Math.cos(angle) * (p.y - spinner.y) - Math.sin(angle) * (p.x - spinner.x)) || 1;
-          p.vx = Math.cos(angle + Math.PI / 2) * direction * 760;
-          p.vy = Math.sin(angle + Math.PI / 2) * direction * 560 - 180;
-          p.vz = 220; p.stun = .7; shake = 1;
-          burst(p.x, p.y, spinner.color, 18); showImpact("VĂNG RA!", now);
-        }
-      }
-      collideWithPlayers(now);
+      if (![p.x, p.y, p.vx, p.vy, p.z, p.vz].every(Number.isFinite)) respawn(now);
 
       for (const particle of particles) {
         particle.x += particle.vx * dt; particle.y += particle.vy * dt;
@@ -282,7 +363,7 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
       for (let i = particles.length - 1; i >= 0; i--) if (particles[i].life <= 0) particles.splice(i, 1);
       shake = Math.max(0, shake - dt * 3.4);
 
-      const progress = Math.min(100, p.y / COURSE * 100);
+      const progress = Math.max(0, Math.min(100, p.y / COURSE * 100));
       const syncDelay = playersRef.current.length > 100 ? 700 : playersRef.current.length > 50 ? 500 : 300;
       if (now - lastSync > syncDelay) { lastSync = now; progressCb.current(progress); }
       if (now - lastUi > 80) {
@@ -303,14 +384,20 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
       renderScale = baseScale;
       const playerScreenY = h * .79;
       const raceSeconds = start ? (now - start) / 1000 : 0;
-      const sy = (worldY: number) => playerScreenY - (worldY - p.y) * baseScale;
+      const sy = (worldY: number) => playerScreenY - (worldY - cameraY) * baseScale;
       const perspective = (worldY: number) => Math.max(.34, Math.min(1.08, .34 + sy(worldY) / h * .82));
       const sx = (worldX: number, worldY: number) => w / 2 + (worldX - COURSE_W / 2) * baseScale * perspective(worldY);
 
       ctx.clearRect(0, 0, w, h);
       ctx.save();
       if (shake > 0) ctx.translate((Math.random() - .5) * shake * 14, (Math.random() - .5) * shake * 10);
-      drawWorld(ctx, w, h, now, p.y, baseScale, sx, sy, perspective);
+      drawWorld(ctx, w, h, now, cameraY, baseScale, sx, sy, perspective);
+
+      for (const pit of [...pits].sort((a, b) => b.y - a.y)) {
+        const y = sy(pit.y);
+        if (y < -220 || y > h + 220) continue;
+        drawPit(ctx, pit, sx, sy, perspective, now);
+      }
 
       const sortedObstacles = [...obstacles].sort((a, b) => b.y - a.y);
       for (const obstacle of sortedObstacles) {
@@ -330,7 +417,7 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
 
       const visiblePlayers = playersRef.current
         .filter((other) => other.id !== me.id)
-        .map((other) => ({ ...other, worldY: other.progress / 100 * COURSE, worldX: 110 + hash(other.id) % 880 }))
+        .map((other) => ({ ...other, worldY: other.progress / 100 * COURSE, worldX: 150 + hash(other.id) % (COURSE_W - 300) }))
         .filter((other) => sy(other.worldY) > -90 && sy(other.worldY) < h + 100)
         .sort((a, b) => b.worldY - a.worldY);
       for (const other of visiblePlayers) {
@@ -346,8 +433,10 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
         ctx.beginPath(); ctx.arc(sx(particle.x, particle.y), y, 3 + particle.life * 5, 0, Math.PI * 2); ctx.fill();
       }
       ctx.globalAlpha = 1;
-      const playerScale = 35 * baseScale * perspective(p.y);
-      drawBean(ctx, sx(p.x, p.y), sy(p.y) - p.z * baseScale, playerScale, me.color, me.name, 1, raceSeconds, true, p.stun);
+      const fallScale = p.falling ? Math.max(.22, 1 - p.fallTime * .66) : 1;
+      const fallAlpha = p.falling ? Math.max(.22, 1 - p.fallTime * .7) : 1;
+      const playerScale = 35 * baseScale * perspective(p.y) * fallScale;
+      drawBean(ctx, sx(p.x, p.y), sy(p.y) - p.z * baseScale, playerScale, me.color, me.name, fallAlpha, raceSeconds, true, p.stun);
       ctx.restore();
 
       ctx.textAlign = "center";
@@ -392,6 +481,9 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
 
       drawCheckeredLine(context, START_LINE, "XUẤT PHÁT", sx, sy, perspective);
       drawCheckeredLine(context, COURSE, "VỀ ĐÍCH", sx, sy, perspective);
+      for (let index = 1; index < CHECKPOINTS.length; index++) {
+        drawCheckpointLine(context, CHECKPOINTS[index], index, sx, sy, perspective);
+      }
 
       const firstPost = Math.floor((cameraY - 600) / 320) * 320;
       for (let worldY = firstPost; worldY < cameraY + 2300; worldY += 320) {
@@ -402,6 +494,41 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
           context.beginPath(); context.arc(sx(x, worldY), y, postSize, 0, Math.PI * 2); context.fill();
         }
       }
+    }
+
+    function drawCheckpointLine(
+      context: CanvasRenderingContext2D, worldY: number, index: number,
+      sx: (x: number, y: number) => number, sy: (y: number) => number, perspective: (y: number) => number,
+    ) {
+      const y = sy(worldY); if (y < -50 || y > canvas!.getBoundingClientRect().height + 50) return;
+      const left = sx(0, worldY), right = sx(COURSE_W, worldY), height = Math.max(7, 17 * perspective(worldY));
+      const gradient = context.createLinearGradient(left, 0, right, 0);
+      gradient.addColorStop(0, "#45f4ff"); gradient.addColorStop(.5, "#ffffff"); gradient.addColorStop(1, "#45f4ff");
+      context.fillStyle = gradient; context.fillRect(left, y - height / 2, right - left, height);
+      context.font = `900 ${Math.max(8, 12 * perspective(worldY))}px system-ui`;
+      context.textAlign = "center"; context.fillStyle = "#ffffff"; context.strokeStyle = "#14234c"; context.lineWidth = 4;
+      context.strokeText(`CHECKPOINT ${index}`, (left + right) / 2, y - height - 5);
+      context.fillText(`CHECKPOINT ${index}`, (left + right) / 2, y - height - 5);
+    }
+
+    function drawPit(
+      context: CanvasRenderingContext2D, pit: Pit,
+      sx: (x: number, y: number) => number, sy: (y: number) => number, perspective: (y: number) => number, now: number,
+    ) {
+      const x1 = sx(pit.x, pit.y), x2 = sx(pit.x + pit.w, pit.y);
+      const x3 = sx(pit.x + pit.w, pit.y + pit.h), x4 = sx(pit.x, pit.y + pit.h);
+      const y1 = sy(pit.y), y2 = sy(pit.y + pit.h);
+      const glow = .34 + Math.sin(now * .004 + pit.y) * .08;
+      context.save();
+      context.shadowColor = "#8e50ff"; context.shadowBlur = 18 * perspective(pit.y);
+      context.fillStyle = "#100621"; context.beginPath(); context.moveTo(x1, y1); context.lineTo(x2, y1); context.lineTo(x3, y2); context.lineTo(x4, y2); context.closePath(); context.fill();
+      context.shadowBlur = 0; context.strokeStyle = `rgba(190,130,255,${glow})`; context.lineWidth = Math.max(2, 7 * perspective(pit.y)); context.stroke();
+      context.fillStyle = "rgba(180,100,255,.17)";
+      for (let i = 0; i < 3; i++) {
+        const t = (i + 1) / 4, yy = y1 + (y2 - y1) * t;
+        context.fillRect(x1 + (x4 - x1) * t + 10, yy, Math.max(0, (x2 + (x3 - x2) * t) - (x1 + (x4 - x1) * t) - 20), 3);
+      }
+      context.restore();
     }
 
     function drawScenery(
