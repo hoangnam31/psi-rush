@@ -79,6 +79,7 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
   const input = useRef({ x: 0, y: 0, jump: false, dash: false });
   const [countdown, setCountdown] = useState("3");
   const [dash, setDash] = useState(100);
+  const [mana, setMana] = useState(100);
   const [elapsed, setElapsed] = useState(0);
   const [localProgress, setLocalProgress] = useState(0);
   const [impact, setImpact] = useState("");
@@ -101,7 +102,7 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
     let renderScale = .6;
     let finished = false;
     const readyAt = performance.now() + 3000;
-    const p = { x: COURSE_W / 2, y: 80, vx: 0, vy: 0, z: 0, vz: 0, stun: 0, dashCd: 0, dashTime: 0 };
+    const p = { x: COURSE_W / 2, y: 80, vx: 0, vy: 0, z: 0, vz: 0, stun: 0, dashCd: 0, dashTime: 0, mana: 100, lastJump: -Infinity };
     const { obstacles, spinners } = buildCourse(map.id);
     const particles: Particle[] = [];
     const keys: Record<string, boolean> = {};
@@ -219,10 +220,20 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
       let iy = (keys.w || keys.arrowup ? 1 : 0) - (keys.s || keys.arrowdown ? 1 : 0) + input.current.y;
       const inputLength = Math.hypot(ix, iy);
       if (inputLength > 1) { ix /= inputLength; iy /= inputLength; }
-      if (input.current.jump && p.z <= 1 && p.stun <= .2) p.vz = 650;
+      if (input.current.jump && p.z <= 1 && p.stun <= .2) {
+        if (p.mana >= 25) {
+          p.vz = 650;
+          p.mana -= 25;
+          p.lastJump = now;
+          burst(p.x, p.y, "#8df6ff", 7);
+        } else {
+          showImpact("HẾT MANA!", now);
+        }
+      }
       input.current.jump = false;
       if (input.current.dash && p.dashCd <= 0 && p.stun <= .2) { p.dashTime = .35; p.dashCd = 3; burst(p.x, p.y - 25, map.accent, 9); }
       input.current.dash = false;
+      if (now - p.lastJump > 900 && p.mana < 100) p.mana = Math.min(100, p.mana + 5 * dt);
 
       const control = p.stun > 0 ? .1 : 1;
       const acceleration = 1280 * control;
@@ -272,10 +283,11 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
       shake = Math.max(0, shake - dt * 3.4);
 
       const progress = Math.min(100, p.y / COURSE * 100);
-      if (now - lastSync > 800) { lastSync = now; progressCb.current(progress); }
+      const syncDelay = playersRef.current.length > 100 ? 700 : playersRef.current.length > 50 ? 500 : 300;
+      if (now - lastSync > syncDelay) { lastSync = now; progressCb.current(progress); }
       if (now - lastUi > 80) {
         lastUi = now;
-        setLocalProgress(progress); setDash(Math.max(0, (1 - p.dashCd / 3) * 100)); setElapsed(now - start);
+        setLocalProgress(progress); setDash(Math.max(0, (1 - p.dashCd / 3) * 100)); setMana(p.mana); setElapsed(now - start);
       }
       if (p.y >= COURSE && !finished) { finished = true; progressCb.current(100); finishCb.current(now - start); }
     }
@@ -569,9 +581,10 @@ export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Pr
     </div>
     <div className="control-hint"><span><b>WASD</b> DI CHUYỂN</span><span><b>SPACE</b> NHẢY</span><span><b>SHIFT</b> BOOST</span></div>
     <div className="boost-hud"><span>SHIFT</span><i><b style={{ width: `${dash}%` }}/></i></div>
+    <div className={`mana-hud ${mana < 25 ? "low" : ""}`}><span><b>SPACE</b> MANA NHẢY</span><i><b style={{ width: `${mana}%` }}/></i><em>{Math.round(mana)}</em></div>
     <div className="touch-controls">
       <div className="touch-stick" onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); pointerAxis(event); }} onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) pointerAxis(event); }} onPointerUp={clearAxis} onPointerCancel={clearAxis}><i/></div>
-      <div><button onPointerDown={() => input.current.jump = true}>↑<small>NHẢY</small></button><button onPointerDown={() => input.current.dash = true}>»<small>BOOST</small></button></div>
+      <div><button className={mana < 25 ? "empty" : ""} onPointerDown={() => input.current.jump = true}>↑<small>{mana < 25 ? "HẾT MANA" : "NHẢY"}</small></button><button onPointerDown={() => input.current.dash = true}>»<small>BOOST</small></button></div>
     </div>
   </div>;
 }

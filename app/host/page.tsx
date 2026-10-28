@@ -19,7 +19,7 @@ export default function HostPage() {
   const refresh = useCallback(async()=>{
     if(!session)return; try{setState(await getRoomState(session.code,session.hostToken));setError("")}catch(e){setError(e instanceof Error?e.message:"Mất kết nối")}
   },[session]);
-  useEffect(()=>{refresh();const id=setInterval(refresh,900);return()=>clearInterval(id)},[refresh]);
+  useEffect(()=>{refresh();const id=setInterval(refresh,450);return()=>clearInterval(id)},[refresh]);
 
   async function createRoom(){
     setBusy(true);setError("");try{

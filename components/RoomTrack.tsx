@@ -1,20 +1,69 @@
 "use client";
+
+import { useEffect, useRef } from "react";
 import { MAPS } from "../lib/game";
 import type { Player } from "../lib/types";
 
+function stableLane(id: string) {
+  const hash = [...id].reduce((value, char) => ((value * 31 + char.charCodeAt(0)) >>> 0), 7);
+  return 10 + hash % 76;
+}
+
 export function RoomTrack({ players, mapId }: { players: Player[]; mapId: string | null }) {
-  const map = MAPS.find((m) => m.id === mapId) ?? MAPS[0];
+  const map = MAPS.find((item) => item.id === mapId) ?? MAPS[0];
   const obstacles = [18, 34, 51, 68, 84];
+  const targets = useRef(new Map<string, number>());
+  const displayed = useRef(new Map<string, number>());
+  const nodes = useRef(new Map<string, HTMLDivElement>());
+
+  useEffect(() => {
+    const active = new Set<string>();
+    for (const player of players) {
+      active.add(player.id);
+      targets.current.set(player.id, Math.min(100, Math.max(0, player.progress)));
+      if (!displayed.current.has(player.id)) displayed.current.set(player.id, player.progress);
+    }
+    for (const id of targets.current.keys()) {
+      if (!active.has(id)) { targets.current.delete(id); displayed.current.delete(id); nodes.current.delete(id); }
+    }
+  }, [players]);
+
+  useEffect(() => {
+    let frame = 0;
+    let previous = performance.now();
+    const animate = (now: number) => {
+      const dt = Math.min(.05, (now - previous) / 1000);
+      previous = now;
+      const easing = 1 - Math.exp(-dt * 7.5);
+      for (const [id, target] of targets.current) {
+        const current = displayed.current.get(id) ?? target;
+        const next = Math.abs(target - current) < .015 ? target : current + (target - current) * easing;
+        displayed.current.set(id, next);
+        const node = nodes.current.get(id);
+        if (node) node.style.bottom = `calc(${Math.min(97, next)}% - 12px)`;
+      }
+      frame = requestAnimationFrame(animate);
+    };
+    frame = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
   return <div className="spectator-track" style={{ "--sky": map.sky, "--floor": map.floor, "--accent": map.accent } as React.CSSProperties}>
     <div className="track-cloud c1"/><div className="track-cloud c2"/>
     <div className="track-lane">
       <div className="finish-line"><b>FINISH</b></div>
-      {obstacles.map((y, i) => <div className={`track-obstacle o${i%3}`} style={{ bottom: `${y}%` }} key={y}><i/><i/><i/></div>)}
-      {players.map((p, i) => <div className="track-runner" key={p.id} style={{ bottom: `calc(${Math.min(97,p.progress)}% - 12px)`, left: `${16 + (i*23)%68}%`, "--bean": p.color } as React.CSSProperties}>
-        <span>{p.name}</span><i><b/><b/></i>
+      {obstacles.map((position, index) => <div className={`track-obstacle o${index % 3}`} style={{ bottom: `${position}%` }} key={position}><i/><i/><i/></div>)}
+      {players.map((player) => <div
+        className="track-runner"
+        key={player.id}
+        ref={(node) => { if (node) nodes.current.set(player.id, node); else nodes.current.delete(player.id); }}
+        style={{ bottom: `calc(${Math.min(97, displayed.current.get(player.id) ?? player.progress)}% - 12px)`, left: `${stableLane(player.id)}%`, "--bean": player.color } as React.CSSProperties}
+      >
+        <span>{player.name}</span><i><b/><b/></i>
       </div>)}
       <div className="start-line">START</div>
     </div>
+    <div className="realtime-chip"><i/> LIVE · 60 FPS VIEW</div>
     <div className="map-plaque"><small>ROUND MAP</small><b>{map.name}</b><span>{map.subtitle}</span></div>
   </div>;
 }

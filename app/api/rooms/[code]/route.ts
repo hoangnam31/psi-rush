@@ -80,7 +80,7 @@ export async function POST(request: Request, context: Context) {
     if (action === "ready") {
       await db.update(players).set({ isReady: Boolean(body.ready), lastSeenAt: sql`CURRENT_TIMESTAMP` }).where(eq(players.id, player.id));
     } else if (action === "progress") {
-      const progress = Math.max(player.progress, Math.min(99.8, Number(body.progress) || 0));
+      const progress = Math.max(0, Math.min(99.8, Number(body.progress) || 0));
       await db.update(players).set({ progress, lastSeenAt: sql`CURRENT_TIMESTAMP` }).where(eq(players.id, player.id));
     } else if (action === "finish") {
       const existing = (await db.select().from(roundResults).where(and(eq(roundResults.roomId, room.id), eq(roundResults.roundNumber, room.currentRound), eq(roundResults.playerId, player.id))).limit(1))[0];
