@@ -1,4 +1,5 @@
 const TRACKS: Record<string, number[]> = {
+  lobby: [262, 330, 392, 523, 440, 392, 330, 349],
   sky: [392, 494, 587, 659, 587, 494, 440, 523],
   lava: [196, 233, 262, 311, 262, 233, 220, 262],
   jungle: [262, 330, 392, 440, 392, 330, 294, 349],
@@ -23,10 +24,15 @@ export class GameAudio {
       this.master.gain.value = .72;
       this.master.connect(this.context.destination);
     }
-    if (this.context.state === "suspended") void this.context.resume();
-    if (this.musicTimer === null) {
+    const startMusic = () => {
+      if (!this.enabled || this.context?.state !== "running" || this.musicTimer !== null) return;
       this.playMusicStep();
       this.musicTimer = window.setInterval(() => this.playMusicStep(), 340);
+    };
+    if (this.context.state === "suspended") {
+      void this.context.resume().then(startMusic).catch(() => {});
+    } else {
+      startMusic();
     }
   }
 
