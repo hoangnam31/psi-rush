@@ -1,69 +1,577 @@
 "use client";
+
 import { useEffect, useRef, useState } from "react";
 import { MAPS } from "../lib/game";
 import type { Player } from "../lib/types";
 
-type Props = { me: Player; players: Player[]; mapId: string | null; round: number; onProgress: (value:number)=>void; onFinish:(timeMs:number)=>void };
-type Obstacle = { x:number;y:number;w:number;h:number;kind:"block"|"pad";color:string };
-type Spinner = { x:number;y:number;len:number;speed:number;phase:number;color:string };
+type Props = {
+  me: Player;
+  players: Player[];
+  mapId: string | null;
+  round: number;
+  onProgress: (value: number) => void;
+  onFinish: (timeMs: number) => void;
+};
 
-const COURSE=10000, CW=1100;
-function mapSeed(id:string){return [...id].reduce((a,c)=>a+c.charCodeAt(0),0)}
-function buildCourse(id:string){
-  const seed=mapSeed(id), colors=["#ff3d9a","#ffe14a","#35dcff","#b6f43b"];
-  const blocks:Obstacle[]=[],spinners:Spinner[]=[];
-  for(let zone=1;zone<=11;zone++){
-    const y=zone*790+(seed*zone)%170, type=(zone+seed)%3;
-    if(type===0){const gap=170+(seed*zone*13)%600;blocks.push({x:0,y,w:gap,h:105,kind:"block",color:colors[zone%4]},{x:gap+200,y,w:CW-gap-200,h:105,kind:"block",color:colors[zone%4]});}
-    else if(type===1){spinners.push({x:260+(zone%2)*570,y,len:260+(seed+zone)%110,speed:(zone%2?1:-1)*(1.5+(zone%4)*.35),phase:zone,color:colors[zone%4]});}
-    else {blocks.push({x:80+(zone*137)%530,y,w:300,h:92,kind:"block",color:colors[zone%4]},{x:430+(zone*91)%350,y:y+220,w:250,h:92,kind:"block",color:colors[(zone+1)%4]});}
-    if(zone%3===0)blocks.push({x:430,y:y+360,w:180,h:100,kind:"pad",color:"#b6f43b"});
-  }
-  return {blocks,spinners};
+type Obstacle = {
+  x: number; y: number; w: number; h: number;
+  kind: "block" | "pad" | "bumper" | "mover";
+  color: string; amp?: number; speed?: number; phase?: number;
+};
+type Spinner = { x: number; y: number; len: number; speed: number; phase: number; color: string };
+type Particle = { x: number; y: number; vx: number; vy: number; life: number; color: string };
+
+const COURSE = 10000;
+const COURSE_W = 1100;
+const START_LINE = 230;
+
+function mapSeed(id: string) {
+  return [...id].reduce((sum, char) => sum + char.charCodeAt(0), 0);
 }
 
-export function RaceGame({me,players,mapId,round,onProgress,onFinish}:Props){
-  const canvasRef=useRef<HTMLCanvasElement>(null), progressCb=useRef(onProgress), finishCb=useRef(onFinish);
-  const playersRef=useRef(players);
-  const input=useRef({x:0,y:0,jump:false,dash:false}); const [countdown,setCountdown]=useState("3"); const [dash,setDash]=useState(100); const [elapsed,setElapsed]=useState(0);
-  const map=MAPS.find(m=>m.id===mapId)??MAPS[0];
-  useEffect(()=>{progressCb.current=onProgress;finishCb.current=onFinish},[onProgress,onFinish]);
-  useEffect(()=>{playersRef.current=players},[players]);
-  useEffect(()=>{
-    const canvas=canvasRef.current;if(!canvas)return;const ctx=canvas.getContext("2d")!;let raf=0,last=performance.now(),start=0,lastSync=0,readyAt=performance.now()+3000,finished=false;
-    const p={x:CW/2,y:80,vx:0,vy:0,z:0,vz:0,stun:0,dashCd:0,dashTime:0};const {blocks,spinners}=buildCourse(map.id);
-    const keys:Record<string,boolean>={};
-    const down=(e:KeyboardEvent)=>{keys[e.key.toLowerCase()]=true;if(e.code==="Space")input.current.jump=true;if(e.key==="Shift")input.current.dash=true};
-    const up=(e:KeyboardEvent)=>{keys[e.key.toLowerCase()]=false};addEventListener("keydown",down);addEventListener("keyup",up);
-    function resize(){const d=Math.min(devicePixelRatio,2),r=canvas!.getBoundingClientRect();canvas!.width=r.width*d;canvas!.height=r.height*d;ctx.setTransform(d,0,0,d,0,0)}resize();addEventListener("resize",resize);
-    function rectHit(o:Obstacle,ox:number,oy:number){if(o.kind==="pad")return false;const nx=Math.max(o.x,Math.min(p.x,o.x+o.w)),ny=Math.max(o.y,Math.min(p.y,o.y+o.h));if((p.x-nx)**2+(p.y-ny)**2<38**2&&p.z<52){p.x=ox;p.y=oy;p.vx*=-.2;p.vy=-120;p.stun=.18;return true}return false}
-    function segDist(px:number,py:number,x1:number,y1:number,x2:number,y2:number){const dx=x2-x1,dy=y2-y1,l=dx*dx+dy*dy||1,t=Math.max(0,Math.min(1,((px-x1)*dx+(py-y1)*dy)/l));return Math.hypot(px-(x1+t*dx),py-(y1+t*dy))}
-    function update(dt:number,now:number){
-      const remain=readyAt-now;if(remain>0){setCountdown(String(Math.ceil(remain/1000)));return}if(!start){start=now;setCountdown("GO!");setTimeout(()=>setCountdown(""),500)}
-      const ox=p.x,oy=p.y;p.stun=Math.max(0,p.stun-dt);p.dashCd=Math.max(0,p.dashCd-dt);p.dashTime=Math.max(0,p.dashTime-dt);
-      let ix=(keys.d||keys.arrowright?1:0)-(keys.a||keys.arrowleft?1:0)+input.current.x;let iy=(keys.w||keys.arrowup?1:0)-(keys.s||keys.arrowdown?1:0)+input.current.y;const len=Math.hypot(ix,iy);if(len>1){ix/=len;iy/=len}
-      if(input.current.jump&&p.z<=1){p.vz=650}input.current.jump=false;if(input.current.dash&&p.dashCd<=0){p.dashTime=.35;p.dashCd=3}input.current.dash=false;
-      const control=p.stun>0?.12:1,acc=1250*control,max=p.dashTime>0?850:(map.id==="ice"?410:355);p.vx+=ix*acc*dt;p.vy+=iy*acc*dt;const friction=Math.pow(map.id==="ice"?.34:.055,dt);p.vx*=friction;p.vy*=friction;const speed=Math.hypot(p.vx,p.vy);if(speed>max){p.vx=p.vx/speed*max;p.vy=p.vy/speed*max}p.x+=p.vx*dt;p.y+=p.vy*dt;p.vz-=1450*dt;p.z+=p.vz*dt;if(p.z<0){p.z=0;p.vz=0}
-      p.x=Math.max(35,Math.min(CW-35,p.x));p.y=Math.max(0,p.y);
-      for(const o of blocks)if(Math.abs(p.y-o.y)<160){if(o.kind==="pad"&&p.x>o.x&&p.x<o.x+o.w&&p.y>o.y&&p.y<o.y+o.h)p.vy=Math.max(p.vy,720);else rectHit(o,ox,oy)}
-      for(const s of spinners)if(Math.abs(p.y-s.y)<s.len+50&&p.stun<.3){const a=(now-start)/1000*s.speed+s.phase,dx=Math.cos(a)*s.len,dy=Math.sin(a)*s.len;if(p.z<55&&segDist(p.x,p.y,s.x-dx,s.y-dy,s.x+dx,s.y+dy)<52){p.vx+=Math.cos(a+Math.PI/2)*650;p.vy-=260;p.stun=.6}}
-      const pct=Math.min(100,p.y/COURSE*100);if(now-lastSync>550){lastSync=now;progressCb.current(pct)}setDash(Math.max(0,(1-p.dashCd/3)*100));setElapsed(now-start);
-      if(p.y>=COURSE&&!finished){finished=true;progressCb.current(100);finishCb.current(now-start)}
+function buildCourse(id: string) {
+  const seed = mapSeed(id);
+  const colors = ["#ff3d9a", "#ffe14a", "#35dcff", "#b6f43b"];
+  const obstacles: Obstacle[] = [];
+  const spinners: Spinner[] = [];
+
+  for (let zone = 1; zone <= 12; zone++) {
+    const y = 650 + zone * 720 + (seed * zone) % 145;
+    const type = (zone + seed) % 4;
+    if (type === 0) {
+      const gap = 150 + (seed * zone * 13) % 610;
+      obstacles.push(
+        { x: 0, y, w: gap, h: 120, kind: "block", color: colors[zone % 4] },
+        { x: gap + 210, y, w: COURSE_W - gap - 210, h: 120, kind: "block", color: colors[zone % 4] },
+      );
+    } else if (type === 1) {
+      spinners.push({
+        x: zone % 2 ? 330 : 770, y, len: 290 + (seed + zone) % 120,
+        speed: (zone % 2 ? 1 : -1) * (1.7 + (zone % 4) * 0.35), phase: zone, color: colors[zone % 4],
+      });
+    } else if (type === 2) {
+      obstacles.push({
+        x: 410, y, w: 280, h: 110, kind: "mover", color: colors[zone % 4],
+        amp: 360, speed: 1.25 + (zone % 3) * 0.28, phase: zone,
+      });
+    } else {
+      obstacles.push(
+        { x: 125 + (zone * 137) % 420, y, w: 260, h: 105, kind: "block", color: colors[zone % 4] },
+        { x: 560 + (zone * 73) % 235, y: y + 245, w: 235, h: 105, kind: "block", color: colors[(zone + 1) % 4] },
+      );
     }
-    function draw(now:number){const r=canvas!.getBoundingClientRect(),w=r.width,h=r.height,sc=Math.max(.42,Math.min(.76,w/1450)),cam=p.y-1300;ctx.clearRect(0,0,w,h);const sky=ctx.createLinearGradient(0,0,0,h);sky.addColorStop(0,map.sky);sky.addColorStop(1,"#170a39");ctx.fillStyle=sky;ctx.fillRect(0,0,w,h);
-      const sx=(x:number)=>w/2+(x-CW/2)*sc,sy=(y:number)=>h*.82-(y-cam)*sc,left=sx(0),right=sx(CW);ctx.fillStyle=map.floor;ctx.fillRect(left,0,right-left,h);ctx.globalAlpha=.14;for(let yy=((cam*sc)%160)-160;yy<h;yy+=160){ctx.fillStyle="#fff";ctx.fillRect(left,yy,right-left,3)}ctx.globalAlpha=1;ctx.fillStyle=map.accent;ctx.fillRect(left-15,0,15,h);ctx.fillRect(right,0,15,h);
-      const fy=sy(COURSE);if(fy>-50&&fy<h+50){for(let x=left,n=0;x<right;x+=34,n++)for(let row=0;row<3;row++){ctx.fillStyle=(n+row)%2?"#fff":"#180936";ctx.fillRect(x,fy+row*34,34,34)}}
-      for(const o of blocks){const y=sy(o.y+o.h),x=sx(o.x),ww=o.w*sc,hh=o.h*sc;if(y<-100||y>h+100)continue;ctx.fillStyle="rgba(12,4,35,.25)";ctx.beginPath();ctx.roundRect(x+7,y+10,ww,hh,13);ctx.fill();ctx.fillStyle=o.color;ctx.beginPath();ctx.roundRect(x,y,ww,hh,13);ctx.fill();ctx.fillStyle="rgba(255,255,255,.22)";ctx.fillRect(x+9,y+8,Math.max(0,ww-18),9)}
-      for(const s of spinners){const x=sx(s.x),y=sy(s.y);if(y<-350||y>h+350)continue;const a=(now-start)/1000*s.speed+s.phase,dx=Math.cos(a)*s.len*sc,dy=-Math.sin(a)*s.len*sc;ctx.strokeStyle=s.color;ctx.lineWidth=22*sc;ctx.lineCap="round";ctx.beginPath();ctx.moveTo(x-dx,y-dy);ctx.lineTo(x+dx,y+dy);ctx.stroke();ctx.fillStyle="#fff";ctx.beginPath();ctx.arc(x,y,24*sc,0,Math.PI*2);ctx.fill()}
-      for(const other of playersRef.current){if(other.id===me.id)continue;const oy=other.progress/100*COURSE,y=sy(oy);if(y<-50||y>h+50)continue;drawBean(sx(130+(hash(other.id)%840)),y,18*sc,other.color,other.name,.55)}drawBean(sx(p.x),sy(p.y)-p.z*sc,30*sc,me.color,me.name,1);
-      ctx.textAlign="center";ctx.font="900 11px system-ui";ctx.fillStyle="rgba(255,255,255,.7)";ctx.fillText(`${map.name.toUpperCase()} · ROUND ${round}`,w/2,34);
+    obstacles.push({
+      x: 170 + (seed * zone * 19) % 760, y: y + 360, w: 105, h: 105,
+      kind: "bumper", color: colors[(zone + 2) % 4], phase: zone,
+    });
+    if (zone % 3 === 0) {
+      obstacles.push({ x: 445, y: y + 500, w: 210, h: 110, kind: "pad", color: "#b6f43b" });
     }
-    function hash(s:string){return [...s].reduce((a,c)=>((a*31+c.charCodeAt(0))>>>0),7)}
-    function drawBean(x:number,y:number,r:number,color:string,name:string,alpha:number){ctx.globalAlpha=alpha;ctx.fillStyle="rgba(12,4,35,.3)";ctx.beginPath();ctx.ellipse(x,y+r*1.1,r*.9,r*.34,0,0,Math.PI*2);ctx.fill();ctx.fillStyle=color;ctx.strokeStyle="#fff";ctx.lineWidth=2;ctx.beginPath();ctx.roundRect(x-r,y-r*1.35,r*2,r*2.5,r*.8);ctx.fill();ctx.stroke();ctx.fillStyle="#fff";ctx.beginPath();ctx.ellipse(x,y-r*.45,r*.62,r*.45,0,0,Math.PI*2);ctx.fill();ctx.fillStyle="#160832";ctx.beginPath();ctx.arc(x-r*.2,y-r*.45,r*.08,0,Math.PI*2);ctx.arc(x+r*.2,y-r*.45,r*.08,0,Math.PI*2);ctx.fill();ctx.font="800 10px system-ui";ctx.textAlign="center";ctx.fillStyle="#fff";ctx.strokeStyle="#180936";ctx.lineWidth=3;ctx.strokeText(name,x,y-r*1.65);ctx.fillText(name,x,y-r*1.65);ctx.globalAlpha=1}
-    function loop(now:number){const dt=Math.min(.033,(now-last)/1000);last=now;if(!finished)update(dt,now);draw(now);raf=requestAnimationFrame(loop)}raf=requestAnimationFrame(loop);
-    return()=>{cancelAnimationFrame(raf);removeEventListener("keydown",down);removeEventListener("keyup",up);removeEventListener("resize",resize)}
-  },[map.id,me.color,me.id,me.name,round]);
-  function pointerAxis(e:React.PointerEvent<HTMLDivElement>){const r=e.currentTarget.getBoundingClientRect(),dx=e.clientX-(r.left+r.width/2),dy=e.clientY-(r.top+r.height/2),l=Math.hypot(dx,dy)||1;input.current.x=dx/l*Math.min(1,l/42);input.current.y=-dy/l*Math.min(1,l/42);const k=e.currentTarget.firstElementChild as HTMLElement;k.style.transform=`translate(${dx/l*Math.min(38,l)}px,${dy/l*Math.min(38,l)}px)`}
-  function clearAxis(e:React.PointerEvent<HTMLDivElement>){input.current.x=input.current.y=0;(e.currentTarget.firstElementChild as HTMLElement).style.transform=""}
-  return <div className="race-game"><canvas ref={canvasRef}/>{countdown&&<div className="race-countdown">{countdown}</div>}<div className="player-hud"><div><small>TIẾN ĐỘ</small><b>{Math.min(100,Math.round(me.progress))}%</b></div><div className="hud-map"><span>{map.name}</span><i><b style={{width:`${me.progress}%`}}/></i></div><div><small>THỜI GIAN</small><b>{(elapsed/1000).toFixed(1)}s</b></div></div><div className="boost-hud"><span>SHIFT</span><i><b style={{width:`${dash}%`}}/></i></div><div className="touch-controls"><div className="touch-stick" onPointerDown={e=>{e.currentTarget.setPointerCapture(e.pointerId);pointerAxis(e)}} onPointerMove={e=>{if(e.currentTarget.hasPointerCapture(e.pointerId))pointerAxis(e)}} onPointerUp={clearAxis} onPointerCancel={clearAxis}><i/></div><div><button onPointerDown={()=>input.current.jump=true}>↑<small>NHẢY</small></button><button onPointerDown={()=>input.current.dash=true}>»<small>BOOST</small></button></div></div></div>;
+  }
+  return { obstacles, spinners };
+}
+
+export function RaceGame({ me, players, mapId, round, onProgress, onFinish }: Props) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const progressCb = useRef(onProgress);
+  const finishCb = useRef(onFinish);
+  const playersRef = useRef(players);
+  const input = useRef({ x: 0, y: 0, jump: false, dash: false });
+  const [countdown, setCountdown] = useState("3");
+  const [dash, setDash] = useState(100);
+  const [elapsed, setElapsed] = useState(0);
+  const [localProgress, setLocalProgress] = useState(0);
+  const [impact, setImpact] = useState("");
+  const map = MAPS.find((item) => item.id === mapId) ?? MAPS[0];
+
+  useEffect(() => { progressCb.current = onProgress; finishCb.current = onFinish; }, [onProgress, onFinish]);
+  useEffect(() => { playersRef.current = players; }, [players]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d")!;
+    let raf = 0;
+    let last = performance.now();
+    let start = 0;
+    let lastSync = 0;
+    let lastUi = 0;
+    let lastImpact = 0;
+    let shake = 0;
+    let renderScale = .6;
+    let finished = false;
+    const readyAt = performance.now() + 3000;
+    const p = { x: COURSE_W / 2, y: 80, vx: 0, vy: 0, z: 0, vz: 0, stun: 0, dashCd: 0, dashTime: 0 };
+    const { obstacles, spinners } = buildCourse(map.id);
+    const particles: Particle[] = [];
+    const keys: Record<string, boolean> = {};
+
+    const down = (event: KeyboardEvent) => {
+      keys[event.key.toLowerCase()] = true;
+      if (event.code === "Space") input.current.jump = true;
+      if (event.key === "Shift") input.current.dash = true;
+      if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.code)) event.preventDefault();
+    };
+    const up = (event: KeyboardEvent) => { keys[event.key.toLowerCase()] = false; };
+    addEventListener("keydown", down);
+    addEventListener("keyup", up);
+
+    function resize() {
+      const dpr = Math.min(devicePixelRatio, 2);
+      const rect = canvas!.getBoundingClientRect();
+      canvas!.width = Math.round(rect.width * dpr);
+      canvas!.height = Math.round(rect.height * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    resize();
+    addEventListener("resize", resize);
+
+    function movingX(obstacle: Obstacle, time: number) {
+      if (obstacle.kind !== "mover") return obstacle.x;
+      return obstacle.x + Math.sin(time * (obstacle.speed ?? 1) + (obstacle.phase ?? 0)) * (obstacle.amp ?? 0);
+    }
+
+    function burst(x: number, y: number, color: string, amount = 9) {
+      for (let i = 0; i < amount; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 110 + Math.random() * 260;
+        particles.push({ x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, life: .45 + Math.random() * .35, color });
+      }
+    }
+
+    function showImpact(label: string, now: number) {
+      if (now - lastImpact < 280) return;
+      lastImpact = now;
+      setImpact(label);
+      window.setTimeout(() => setImpact(""), 520);
+    }
+
+    function hitRect(obstacle: Obstacle, obstacleX: number, oldX: number, oldY: number, now: number) {
+      const nearX = Math.max(obstacleX, Math.min(p.x, obstacleX + obstacle.w));
+      const nearY = Math.max(obstacle.y, Math.min(p.y, obstacle.y + obstacle.h));
+      if ((p.x - nearX) ** 2 + (p.y - nearY) ** 2 >= 40 ** 2 || p.z >= 58) return false;
+      const side = Math.sign(p.x - (obstacleX + obstacle.w / 2)) || (p.x < COURSE_W / 2 ? -1 : 1);
+      p.x = oldX; p.y = oldY;
+      p.vx = side * (obstacle.kind === "mover" ? 620 : 360);
+      p.vy = -260;
+      p.stun = obstacle.kind === "mover" ? .62 : .36;
+      shake = obstacle.kind === "mover" ? 1 : .62;
+      burst(p.x, p.y, obstacle.color, 12);
+      showImpact(obstacle.kind === "mover" ? "BỊ HÚC!" : "VA CHẠM!", now);
+      return true;
+    }
+
+    function hitBumper(obstacle: Obstacle, obstacleX: number, now: number) {
+      const radius = obstacle.w / 2;
+      const cx = obstacleX + radius, cy = obstacle.y + radius;
+      const dx = p.x - cx, dy = p.y - cy, distance = Math.hypot(dx, dy) || 1;
+      if (distance > radius + 38 || p.z > 68 || p.stun > .32) return;
+      p.vx = dx / distance * 760;
+      p.vy = dy / distance * 760;
+      p.vz = 260;
+      p.stun = .58;
+      shake = .9;
+      burst(cx, cy, obstacle.color, 16);
+      showImpact("BOING!", now);
+    }
+
+    function segmentDistance(px: number, py: number, x1: number, y1: number, x2: number, y2: number) {
+      const dx = x2 - x1, dy = y2 - y1;
+      const length = dx * dx + dy * dy || 1;
+      const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / length));
+      return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+    }
+
+    function collideWithPlayers(now: number) {
+      for (const other of playersRef.current) {
+        if (other.id === me.id || other.progress >= 100) continue;
+        const otherY = other.progress / 100 * COURSE;
+        const otherX = 110 + hash(other.id) % 880;
+        const dx = p.x - otherX, dy = p.y - otherY;
+        const distance = Math.hypot(dx, dy) || 1;
+        if (distance < 66 && p.z < 45 && p.stun < .18) {
+          p.vx += dx / distance * 250;
+          p.vy *= .72;
+          p.stun = .16;
+          shake = .24;
+          burst((p.x + otherX) / 2, (p.y + otherY) / 2, "#ffffff", 5);
+          showImpact("BUMP!", now);
+          break;
+        }
+      }
+    }
+
+    function update(dt: number, now: number) {
+      const remain = readyAt - now;
+      if (remain > 0) { setCountdown(String(Math.ceil(remain / 1000))); return; }
+      if (!start) {
+        start = now;
+        setCountdown("GO!");
+        window.setTimeout(() => setCountdown(""), 520);
+      }
+      const raceSeconds = (now - start) / 1000;
+      const oldX = p.x, oldY = p.y;
+      p.stun = Math.max(0, p.stun - dt);
+      p.dashCd = Math.max(0, p.dashCd - dt);
+      p.dashTime = Math.max(0, p.dashTime - dt);
+
+      let ix = (keys.d || keys.arrowright ? 1 : 0) - (keys.a || keys.arrowleft ? 1 : 0) + input.current.x;
+      let iy = (keys.w || keys.arrowup ? 1 : 0) - (keys.s || keys.arrowdown ? 1 : 0) + input.current.y;
+      const inputLength = Math.hypot(ix, iy);
+      if (inputLength > 1) { ix /= inputLength; iy /= inputLength; }
+      if (input.current.jump && p.z <= 1 && p.stun <= .2) p.vz = 650;
+      input.current.jump = false;
+      if (input.current.dash && p.dashCd <= 0 && p.stun <= .2) { p.dashTime = .35; p.dashCd = 3; burst(p.x, p.y - 25, map.accent, 9); }
+      input.current.dash = false;
+
+      const control = p.stun > 0 ? .1 : 1;
+      const acceleration = 1280 * control;
+      const maxSpeed = p.dashTime > 0 ? 850 : (map.id === "ice" ? 420 : 365);
+      p.vx += ix * acceleration * dt;
+      p.vy += iy * acceleration * dt;
+      const friction = Math.pow(map.id === "ice" ? .34 : .055, dt);
+      p.vx *= friction; p.vy *= friction;
+      const speed = Math.hypot(p.vx, p.vy);
+      if (speed > maxSpeed) { p.vx = p.vx / speed * maxSpeed; p.vy = p.vy / speed * maxSpeed; }
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      p.vz -= 1450 * dt; p.z += p.vz * dt;
+      if (p.z < 0) { p.z = 0; p.vz = 0; }
+      p.x = Math.max(38, Math.min(COURSE_W - 38, p.x));
+      p.y = Math.max(0, p.y);
+
+      for (const obstacle of obstacles) {
+        if (Math.abs(p.y - obstacle.y) > 210) continue;
+        const obstacleX = movingX(obstacle, raceSeconds);
+        if (obstacle.kind === "pad") {
+          if (p.x > obstacleX && p.x < obstacleX + obstacle.w && p.y > obstacle.y && p.y < obstacle.y + obstacle.h && p.z < 18) {
+            p.vy = Math.max(p.vy, 790); p.vz = 130; burst(p.x, p.y, obstacle.color, 10); showImpact("BOOST!", now);
+          }
+        } else if (obstacle.kind === "bumper") hitBumper(obstacle, obstacleX, now);
+        else hitRect(obstacle, obstacleX, oldX, oldY, now);
+      }
+
+      for (const spinner of spinners) {
+        if (Math.abs(p.y - spinner.y) > spinner.len + 60 || p.stun > .34) continue;
+        const angle = raceSeconds * spinner.speed + spinner.phase;
+        const dx = Math.cos(angle) * spinner.len, dy = Math.sin(angle) * spinner.len;
+        if (p.z < 60 && segmentDistance(p.x, p.y, spinner.x - dx, spinner.y - dy, spinner.x + dx, spinner.y + dy) < 54) {
+          const direction = Math.sign(Math.cos(angle) * (p.y - spinner.y) - Math.sin(angle) * (p.x - spinner.x)) || 1;
+          p.vx = Math.cos(angle + Math.PI / 2) * direction * 760;
+          p.vy = Math.sin(angle + Math.PI / 2) * direction * 560 - 180;
+          p.vz = 220; p.stun = .7; shake = 1;
+          burst(p.x, p.y, spinner.color, 18); showImpact("VĂNG RA!", now);
+        }
+      }
+      collideWithPlayers(now);
+
+      for (const particle of particles) {
+        particle.x += particle.vx * dt; particle.y += particle.vy * dt;
+        particle.vx *= .92; particle.vy *= .92; particle.life -= dt;
+      }
+      for (let i = particles.length - 1; i >= 0; i--) if (particles[i].life <= 0) particles.splice(i, 1);
+      shake = Math.max(0, shake - dt * 3.4);
+
+      const progress = Math.min(100, p.y / COURSE * 100);
+      if (now - lastSync > 800) { lastSync = now; progressCb.current(progress); }
+      if (now - lastUi > 80) {
+        lastUi = now;
+        setLocalProgress(progress); setDash(Math.max(0, (1 - p.dashCd / 3) * 100)); setElapsed(now - start);
+      }
+      if (p.y >= COURSE && !finished) { finished = true; progressCb.current(100); finishCb.current(now - start); }
+    }
+
+    function hash(value: string) {
+      return [...value].reduce((result, char) => ((result * 31 + char.charCodeAt(0)) >>> 0), 7);
+    }
+
+    function draw(now: number) {
+      const rect = canvas!.getBoundingClientRect();
+      const w = rect.width, h = rect.height;
+      const baseScale = Math.max(.43, Math.min(.74, w / 1480));
+      renderScale = baseScale;
+      const playerScreenY = h * .79;
+      const raceSeconds = start ? (now - start) / 1000 : 0;
+      const sy = (worldY: number) => playerScreenY - (worldY - p.y) * baseScale;
+      const perspective = (worldY: number) => Math.max(.34, Math.min(1.08, .34 + sy(worldY) / h * .82));
+      const sx = (worldX: number, worldY: number) => w / 2 + (worldX - COURSE_W / 2) * baseScale * perspective(worldY);
+
+      ctx.clearRect(0, 0, w, h);
+      ctx.save();
+      if (shake > 0) ctx.translate((Math.random() - .5) * shake * 14, (Math.random() - .5) * shake * 10);
+      drawWorld(ctx, w, h, now, p.y, baseScale, sx, sy, perspective);
+
+      const sortedObstacles = [...obstacles].sort((a, b) => b.y - a.y);
+      for (const obstacle of sortedObstacles) {
+        const y = sy(obstacle.y);
+        if (y < -130 || y > h + 160) continue;
+        const obstacleX = movingX(obstacle, raceSeconds);
+        if (obstacle.kind === "bumper") drawBumper(ctx, obstacle, obstacleX, sx, sy, perspective, now);
+        else if (obstacle.kind === "pad") drawPad(ctx, obstacle, obstacleX, sx, sy, perspective);
+        else drawBox(ctx, obstacle, obstacleX, sx, sy, perspective);
+      }
+
+      for (const spinner of [...spinners].sort((a, b) => b.y - a.y)) {
+        const y = sy(spinner.y);
+        if (y < -350 || y > h + 350) continue;
+        drawSpinner(ctx, spinner, raceSeconds, sx, sy, perspective);
+      }
+
+      const visiblePlayers = playersRef.current
+        .filter((other) => other.id !== me.id)
+        .map((other) => ({ ...other, worldY: other.progress / 100 * COURSE, worldX: 110 + hash(other.id) % 880 }))
+        .filter((other) => sy(other.worldY) > -90 && sy(other.worldY) < h + 100)
+        .sort((a, b) => b.worldY - a.worldY);
+      for (const other of visiblePlayers) {
+        const scale = 28 * baseScale * perspective(other.worldY);
+        drawBean(ctx, sx(other.worldX, other.worldY), sy(other.worldY), scale, other.color, other.name, .9, raceSeconds, false, 0);
+      }
+
+      for (const particle of particles) {
+        const y = sy(particle.y);
+        if (y < -20 || y > h + 20) continue;
+        ctx.globalAlpha = Math.max(0, particle.life * 1.8);
+        ctx.fillStyle = particle.color;
+        ctx.beginPath(); ctx.arc(sx(particle.x, particle.y), y, 3 + particle.life * 5, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      const playerScale = 35 * baseScale * perspective(p.y);
+      drawBean(ctx, sx(p.x, p.y), sy(p.y) - p.z * baseScale, playerScale, me.color, me.name, 1, raceSeconds, true, p.stun);
+      ctx.restore();
+
+      ctx.textAlign = "center";
+      ctx.font = "900 11px system-ui";
+      ctx.fillStyle = "rgba(255,255,255,.72)";
+      ctx.fillText(`${map.name.toUpperCase()} · ROUND ${round}`, w / 2, 34);
+    }
+
+    function drawWorld(
+      context: CanvasRenderingContext2D, w: number, h: number, now: number, cameraY: number, baseScale: number,
+      sx: (x: number, y: number) => number, sy: (y: number) => number, perspective: (y: number) => number,
+    ) {
+      const sky = context.createLinearGradient(0, 0, 0, h);
+      sky.addColorStop(0, map.sky); sky.addColorStop(.55, colorMix(map.sky, "#ffffff", .13)); sky.addColorStop(1, "#170a39");
+      context.fillStyle = sky; context.fillRect(0, 0, w, h);
+      drawScenery(context, w, h, now, cameraY, sx, sy, perspective);
+
+      const topLeft = sx(0, cameraY + h / baseScale * 1.2), topRight = sx(COURSE_W, cameraY + h / baseScale * 1.2);
+      const bottomLeft = sx(0, cameraY - h / baseScale * .35), bottomRight = sx(COURSE_W, cameraY - h / baseScale * .35);
+      const roadGradient = context.createLinearGradient(0, 0, 0, h);
+      roadGradient.addColorStop(0, colorMix(map.floor, "#ffffff", .12)); roadGradient.addColorStop(1, colorMix(map.floor, "#000000", .1));
+      context.fillStyle = roadGradient;
+      context.beginPath(); context.moveTo(topLeft, 0); context.lineTo(topRight, 0); context.lineTo(bottomRight, h); context.lineTo(bottomLeft, h); context.closePath(); context.fill();
+
+      const firstGrid = Math.floor((cameraY - 700) / 250) * 250;
+      for (let worldY = firstGrid; worldY < cameraY + 2300; worldY += 250) {
+        const y = sy(worldY); if (y < 0 || y > h) continue;
+        context.globalAlpha = .11; context.strokeStyle = "#ffffff"; context.lineWidth = Math.max(1, 4 * perspective(worldY));
+        context.beginPath(); context.moveTo(sx(0, worldY), y); context.lineTo(sx(COURSE_W, worldY), y); context.stroke();
+      }
+      context.globalAlpha = .08;
+      for (const laneX of [COURSE_W / 3, COURSE_W * 2 / 3]) {
+        context.strokeStyle = "#ffffff"; context.lineWidth = 3;
+        context.beginPath(); context.moveTo(sx(laneX, cameraY + 2400), 0); context.lineTo(sx(laneX, cameraY - 600), h); context.stroke();
+      }
+      context.globalAlpha = 1;
+
+      context.strokeStyle = map.accent; context.lineWidth = 13; context.lineCap = "round";
+      context.beginPath(); context.moveTo(topLeft, 0); context.lineTo(bottomLeft, h); context.moveTo(topRight, 0); context.lineTo(bottomRight, h); context.stroke();
+      context.strokeStyle = "rgba(255,255,255,.35)"; context.lineWidth = 3;
+      context.beginPath(); context.moveTo(topLeft + 8, 0); context.lineTo(bottomLeft + 8, h); context.moveTo(topRight - 8, 0); context.lineTo(bottomRight - 8, h); context.stroke();
+
+      drawCheckeredLine(context, START_LINE, "XUẤT PHÁT", sx, sy, perspective);
+      drawCheckeredLine(context, COURSE, "VỀ ĐÍCH", sx, sy, perspective);
+
+      const firstPost = Math.floor((cameraY - 600) / 320) * 320;
+      for (let worldY = firstPost; worldY < cameraY + 2300; worldY += 320) {
+        const y = sy(worldY); if (y < -20 || y > h + 20) continue;
+        const postSize = 9 * perspective(worldY);
+        for (const x of [0, COURSE_W]) {
+          context.fillStyle = worldY / 320 % 2 ? map.accent : "#ffffff";
+          context.beginPath(); context.arc(sx(x, worldY), y, postSize, 0, Math.PI * 2); context.fill();
+        }
+      }
+    }
+
+    function drawScenery(
+      context: CanvasRenderingContext2D, w: number, h: number, now: number, cameraY: number,
+      sx: (x: number, y: number) => number, sy: (y: number) => number, perspective: (y: number) => number,
+    ) {
+      context.globalAlpha = .18;
+      for (let i = 0; i < 7; i++) {
+        const x = ((i * 283 + now * .008) % (w + 240)) - 120;
+        const y = 70 + (i % 3) * 95;
+        context.fillStyle = "#ffffff"; context.beginPath(); context.ellipse(x, y, 60 + i % 2 * 30, 18, 0, 0, Math.PI * 2); context.fill();
+      }
+      context.globalAlpha = 1;
+      const first = Math.floor((cameraY - 400) / 430) * 430;
+      for (let worldY = first; worldY < cameraY + 2500; worldY += 430) {
+        const y = sy(worldY); if (y < -80 || y > h + 100) continue;
+        const size = 36 * perspective(worldY);
+        for (const side of [-1, 1]) {
+          const x = sx(side < 0 ? -145 : COURSE_W + 145, worldY);
+          if (map.id === "jungle") {
+            context.fillStyle = "#174d3e"; context.fillRect(x - size * .12, y, size * .24, size * 1.25);
+            context.fillStyle = "#55dd88"; context.beginPath(); context.arc(x, y - size * .25, size * .65, 0, Math.PI * 2); context.fill();
+          } else if (map.id === "ice") {
+            context.fillStyle = "#c9f7ff"; context.beginPath(); context.moveTo(x, y - size); context.lineTo(x + size * .45, y + size * .4); context.lineTo(x - size * .35, y + size * .25); context.closePath(); context.fill();
+          } else if (map.id === "lava") {
+            context.fillStyle = "#54202b"; context.beginPath(); context.arc(x, y, size * .55, 0, Math.PI * 2); context.fill(); context.strokeStyle = "#ff7b35"; context.lineWidth = 3; context.stroke();
+          } else {
+            context.fillStyle = colorMix(map.accent, "#ffffff", .12); context.beginPath(); context.arc(x, y, size * .55, 0, Math.PI * 2); context.fill();
+          }
+        }
+      }
+    }
+
+    function drawCheckeredLine(
+      context: CanvasRenderingContext2D, worldY: number, label: string,
+      sx: (x: number, y: number) => number, sy: (y: number) => number, perspective: (y: number) => number,
+    ) {
+      const y = sy(worldY); if (y < -60 || y > canvas!.getBoundingClientRect().height + 60) return;
+      const left = sx(0, worldY), right = sx(COURSE_W, worldY), cells = 18, cellWidth = (right - left) / cells;
+      const cellHeight = 34 * perspective(worldY);
+      for (let row = 0; row < 2; row++) for (let column = 0; column < cells; column++) {
+        context.fillStyle = (row + column) % 2 ? "#ffffff" : "#1c0a3e";
+        context.fillRect(left + column * cellWidth, y + row * cellHeight, cellWidth + 1, cellHeight + 1);
+      }
+      context.font = `900 ${Math.max(8, 13 * perspective(worldY))}px system-ui`;
+      context.textAlign = "center"; context.fillStyle = "#ffffff"; context.strokeStyle = "#17082f"; context.lineWidth = 4;
+      context.strokeText(label, (left + right) / 2, y - 10); context.fillText(label, (left + right) / 2, y - 10);
+    }
+
+    function drawBox(
+      context: CanvasRenderingContext2D, obstacle: Obstacle, obstacleX: number,
+      sx: (x: number, y: number) => number, sy: (y: number) => number, perspective: (y: number) => number,
+    ) {
+      const scale = perspective(obstacle.y);
+      const left = sx(obstacleX, obstacle.y), right = sx(obstacleX + obstacle.w, obstacle.y);
+      const ground = sy(obstacle.y), depth = Math.max(13, obstacle.h * .26 * scale), rise = Math.max(22, obstacle.h * .68 * scale);
+      const topColor = colorMix(obstacle.color, "#ffffff", .28), sideColor = colorMix(obstacle.color, "#000000", .23);
+      context.fillStyle = "rgba(13,4,38,.25)"; context.beginPath(); context.ellipse((left + right) / 2 + 6, ground + 10, (right - left) * .55, depth * .45, 0, 0, Math.PI * 2); context.fill();
+      context.fillStyle = obstacle.color; context.beginPath(); context.roundRect(left, ground - rise, right - left, rise, 10 * scale); context.fill();
+      context.fillStyle = sideColor; context.beginPath(); context.moveTo(right, ground - rise); context.lineTo(right + depth, ground - rise - depth); context.lineTo(right + depth, ground - depth); context.lineTo(right, ground); context.closePath(); context.fill();
+      context.fillStyle = topColor; context.beginPath(); context.moveTo(left, ground - rise); context.lineTo(left + depth, ground - rise - depth); context.lineTo(right + depth, ground - rise - depth); context.lineTo(right, ground - rise); context.closePath(); context.fill();
+      context.fillStyle = "rgba(255,255,255,.38)"; context.fillRect(left + 10 * scale, ground - rise + 9 * scale, Math.max(0, right - left - 20 * scale), 7 * scale);
+      if (obstacle.kind === "mover") {
+        context.fillStyle = "#ffffff"; context.font = `900 ${Math.max(8, 17 * scale)}px system-ui`; context.textAlign = "center"; context.fillText("⇆", (left + right) / 2, ground - rise * .38);
+      }
+    }
+
+    function drawBumper(
+      context: CanvasRenderingContext2D, obstacle: Obstacle, obstacleX: number,
+      sx: (x: number, y: number) => number, sy: (y: number) => number, perspective: (y: number) => number, now: number,
+    ) {
+      const scale = perspective(obstacle.y), radius = obstacle.w / 2 * basePixel(scale);
+      const x = sx(obstacleX + obstacle.w / 2, obstacle.y), y = sy(obstacle.y + obstacle.h / 2);
+      const pulse = 1 + Math.sin(now * .006 + (obstacle.phase ?? 0)) * .05;
+      context.fillStyle = "rgba(12,4,35,.28)"; context.beginPath(); context.ellipse(x + 5, y + radius * .62, radius * 1.05, radius * .34, 0, 0, Math.PI * 2); context.fill();
+      const gradient = context.createRadialGradient(x - radius * .28, y - radius * .35, 2, x, y, radius * pulse);
+      gradient.addColorStop(0, "#ffffff"); gradient.addColorStop(.22, colorMix(obstacle.color, "#ffffff", .25)); gradient.addColorStop(1, colorMix(obstacle.color, "#000000", .22));
+      context.fillStyle = gradient; context.beginPath(); context.arc(x, y, radius * pulse, 0, Math.PI * 2); context.fill();
+      context.strokeStyle = "rgba(255,255,255,.8)"; context.lineWidth = Math.max(2, radius * .13); context.stroke();
+      context.fillStyle = "#ffffff"; context.beginPath(); context.arc(x, y, radius * .22, 0, Math.PI * 2); context.fill();
+    }
+
+    function basePixel(scale: number) { return renderScale * scale; }
+
+    function drawPad(
+      context: CanvasRenderingContext2D, obstacle: Obstacle, obstacleX: number,
+      sx: (x: number, y: number) => number, sy: (y: number) => number, perspective: (y: number) => number,
+    ) {
+      const left = sx(obstacleX, obstacle.y), right = sx(obstacleX + obstacle.w, obstacle.y);
+      const farY = sy(obstacle.y + obstacle.h), nearY = sy(obstacle.y), scale = perspective(obstacle.y);
+      context.fillStyle = obstacle.color; context.beginPath(); context.moveTo(left, nearY); context.lineTo(right, nearY); context.lineTo(sx(obstacleX + obstacle.w, obstacle.y + obstacle.h), farY); context.lineTo(sx(obstacleX, obstacle.y + obstacle.h), farY); context.closePath(); context.fill();
+      context.strokeStyle = "#ffffff"; context.lineWidth = Math.max(2, 4 * scale);
+      for (let i = 0; i < 3; i++) { const x = left + (right - left) * (.28 + i * .22); context.beginPath(); context.moveTo(x - 8 * scale, nearY - 6 * scale); context.lineTo(x + 4 * scale, nearY); context.lineTo(x - 8 * scale, nearY + 6 * scale); context.stroke(); }
+    }
+
+    function drawSpinner(
+      context: CanvasRenderingContext2D, spinner: Spinner, time: number,
+      sx: (x: number, y: number) => number, sy: (y: number) => number, perspective: (y: number) => number,
+    ) {
+      const angle = time * spinner.speed + spinner.phase, scale = renderScale * perspective(spinner.y);
+      const x = sx(spinner.x, spinner.y), y = sy(spinner.y), dx = Math.cos(angle) * spinner.len * scale, dy = -Math.sin(angle) * spinner.len * scale * .72;
+      context.strokeStyle = "rgba(12,4,35,.25)"; context.lineWidth = 34 * scale; context.lineCap = "round"; context.beginPath(); context.moveTo(x - dx + 7, y - dy + 9); context.lineTo(x + dx + 7, y + dy + 9); context.stroke();
+      const bar = context.createLinearGradient(x - dx, y - dy, x + dx, y + dy); bar.addColorStop(0, colorMix(spinner.color, "#000000", .18)); bar.addColorStop(.5, spinner.color); bar.addColorStop(1, colorMix(spinner.color, "#ffffff", .25));
+      context.strokeStyle = bar; context.lineWidth = 30 * scale; context.beginPath(); context.moveTo(x - dx, y - dy); context.lineTo(x + dx, y + dy); context.stroke();
+      context.strokeStyle = "rgba(255,255,255,.38)"; context.lineWidth = 5 * scale; context.beginPath(); context.moveTo(x - dx, y - dy - 5 * scale); context.lineTo(x + dx, y + dy - 5 * scale); context.stroke();
+      context.fillStyle = "#ffffff"; context.beginPath(); context.arc(x, y, 35 * scale, 0, Math.PI * 2); context.fill();
+      context.fillStyle = "#4a208d"; context.beginPath(); context.arc(x, y, 18 * scale, 0, Math.PI * 2); context.fill();
+    }
+
+    function drawBean(
+      context: CanvasRenderingContext2D, x: number, y: number, radius: number, color: string, name: string,
+      alpha: number, time: number, isMe: boolean, stun: number,
+    ) {
+      const run = Math.min(1, Math.hypot(p.vx, p.vy) / 280);
+      const bob = isMe ? Math.abs(Math.sin(time * 9)) * radius * .13 * run : Math.sin(time * 5 + hash(name)) * radius * .05;
+      const tilt = isMe ? Math.max(-.2, Math.min(.2, p.vx / 1200)) : 0;
+      const squish = isMe && stun > .2 ? .78 : 1;
+      context.save(); context.globalAlpha = alpha; context.translate(x, y - bob); context.rotate(tilt); context.scale(1 / squish, squish);
+      context.fillStyle = "rgba(12,4,35,.28)"; context.beginPath(); context.ellipse(4, radius * 1.27 + bob, radius * .95, radius * .34, 0, 0, Math.PI * 2); context.fill();
+      const limbSwing = Math.sin(time * 10) * radius * .23 * run;
+      context.strokeStyle = color; context.lineWidth = radius * .45; context.lineCap = "round";
+      context.beginPath(); context.moveTo(-radius * .56, radius * .15); context.lineTo(-radius * .92, radius * .3 + limbSwing); context.moveTo(radius * .56, radius * .15); context.lineTo(radius * .92, radius * .3 - limbSwing); context.stroke();
+      context.beginPath(); context.moveTo(-radius * .33, radius * .72); context.lineTo(-radius * .38 - limbSwing * .32, radius * 1.22); context.moveTo(radius * .33, radius * .72); context.lineTo(radius * .38 + limbSwing * .32, radius * 1.22); context.stroke();
+      const bodyGradient = context.createLinearGradient(-radius, -radius, radius, radius);
+      bodyGradient.addColorStop(0, colorMix(color, "#ffffff", .32)); bodyGradient.addColorStop(.52, color); bodyGradient.addColorStop(1, colorMix(color, "#000000", .28));
+      context.fillStyle = bodyGradient; context.strokeStyle = isMe ? "#ffffff" : colorMix(color, "#000000", .35); context.lineWidth = Math.max(2, radius * .12);
+      context.beginPath(); context.roundRect(-radius, -radius * 1.25, radius * 2, radius * 2.35, radius * .78); context.fill(); context.stroke();
+      context.fillStyle = "rgba(255,255,255,.19)"; context.beginPath(); context.ellipse(-radius * .34, -radius * .73, radius * .2, radius * .4, -.45, 0, Math.PI * 2); context.fill();
+      context.fillStyle = "#ffffff"; context.beginPath(); context.ellipse(0, -radius * .46, radius * .65, radius * .46, 0, 0, Math.PI * 2); context.fill();
+      context.fillStyle = "#170831"; context.beginPath(); context.ellipse(-radius * .21, -radius * .47, radius * .085, radius * .15, 0, 0, Math.PI * 2); context.ellipse(radius * .21, -radius * .47, radius * .085, radius * .15, 0, 0, Math.PI * 2); context.fill();
+      context.restore();
+      context.globalAlpha = alpha; context.font = `900 ${Math.max(9, radius * .36)}px system-ui`; context.textAlign = "center"; context.strokeStyle = "#15062f"; context.lineWidth = 5; context.strokeText(name, x, y - radius * 1.72 - bob); context.fillStyle = isMe ? "#ffe14a" : "#ffffff"; context.fillText(name, x, y - radius * 1.72 - bob); context.globalAlpha = 1;
+    }
+
+    function colorMix(color: string, mix: string, amount: number) {
+      const parse = (value: string) => value.replace("#", "").match(/.{2}/g)!.map((part) => parseInt(part, 16));
+      const a = parse(color), b = parse(mix);
+      return `rgb(${a.map((channel, index) => Math.round(channel * (1 - amount) + b[index] * amount)).join(",")})`;
+    }
+
+    function loop(now: number) {
+      const dt = Math.min(.033, (now - last) / 1000);
+      last = now;
+      if (!finished) update(dt, now);
+      draw(now);
+      raf = requestAnimationFrame(loop);
+    }
+    raf = requestAnimationFrame(loop);
+    return () => {
+      cancelAnimationFrame(raf);
+      removeEventListener("keydown", down); removeEventListener("keyup", up); removeEventListener("resize", resize);
+    };
+  }, [map.id, map.accent, map.floor, map.sky, me.color, me.id, me.name, round]);
+
+  function pointerAxis(event: React.PointerEvent<HTMLDivElement>) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const dx = event.clientX - (rect.left + rect.width / 2), dy = event.clientY - (rect.top + rect.height / 2);
+    const length = Math.hypot(dx, dy) || 1;
+    input.current.x = dx / length * Math.min(1, length / 42);
+    input.current.y = -dy / length * Math.min(1, length / 42);
+    const knob = event.currentTarget.firstElementChild as HTMLElement;
+    knob.style.transform = `translate(${dx / length * Math.min(38, length)}px,${dy / length * Math.min(38, length)}px)`;
+  }
+  function clearAxis(event: React.PointerEvent<HTMLDivElement>) {
+    input.current.x = input.current.y = 0;
+    (event.currentTarget.firstElementChild as HTMLElement).style.transform = "";
+  }
+
+  return <div className="race-game">
+    <canvas ref={canvasRef}/>
+    {countdown && <div className="race-countdown">{countdown}</div>}
+    {impact && <div className="impact-callout">{impact}</div>}
+    <div className="player-hud">
+      <div><small>TIẾN ĐỘ</small><b>{Math.min(100, Math.round(localProgress))}%</b></div>
+      <div className="hud-map"><span>{map.name}</span><i><b style={{ width: `${localProgress}%` }}/></i></div>
+      <div><small>THỜI GIAN</small><b>{(elapsed / 1000).toFixed(1)}s</b></div>
+    </div>
+    <div className="control-hint"><span><b>WASD</b> DI CHUYỂN</span><span><b>SPACE</b> NHẢY</span><span><b>SHIFT</b> BOOST</span></div>
+    <div className="boost-hud"><span>SHIFT</span><i><b style={{ width: `${dash}%` }}/></i></div>
+    <div className="touch-controls">
+      <div className="touch-stick" onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); pointerAxis(event); }} onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) pointerAxis(event); }} onPointerUp={clearAxis} onPointerCancel={clearAxis}><i/></div>
+      <div><button onPointerDown={() => input.current.jump = true}>↑<small>NHẢY</small></button><button onPointerDown={() => input.current.dash = true}>»<small>BOOST</small></button></div>
+    </div>
+  </div>;
 }
