@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { MAPS } from "../lib/game";
+import { GameAudio } from "../lib/game-audio";
 import type { Player } from "../lib/types";
 
 type Props = {
@@ -71,7 +72,7 @@ function buildCourse(id: string) {
     zones.push({ kind: "tiles", x: 70, y: SURVIVAL_Y, w: COURSE_W - 140, h: SURVIVAL_H, phase: seed * .01 });
   } else if (id === "sky") {
     [1150, 3400, 5650, 7900].forEach((y, index) => {
-      zones.push({ kind: "rings", x: 0, y, w: COURSE_W, h: 1120, phase: index });
+      zones.push({ kind: "rings", x: 0, y, w: COURSE_W, h: 1280, phase: index });
       spinners.push({ x: COURSE_W / 2, y: y + 555, len: 205, speed: (index % 2 ? -1 : 1) * (1.45 + index * .18), phase: index, color: colors[index % colors.length] });
     });
   } else if (id === "lava") {
@@ -128,6 +129,7 @@ function buildCourse(id: string) {
 
 export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onFinish, onEliminate }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const audioRef = useRef<GameAudio | null>(null);
   const progressCb = useRef(onProgress);
   const finishCb = useRef(onFinish);
   const eliminateCb = useRef(onEliminate);
@@ -139,6 +141,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
   const [elapsed, setElapsed] = useState(0);
   const [localProgress, setLocalProgress] = useState(0);
   const [impact, setImpact] = useState("");
+  const [soundOn, setSoundOn] = useState(true);
   const map = MAPS.find((item) => item.id === mapId) ?? MAPS[0];
   const isSurvival = map.mode === "survival";
 
@@ -149,6 +152,8 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d")!;
+    const audio = new GameAudio(map.id);
+    audioRef.current = audio;
     let raf = 0;
     let last = performance.now();
     let start = 0;
@@ -169,7 +174,6 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
         const angle = stableHash(playerId) / 0xffffffff * Math.PI * 2;
         return { x: COURSE_W / 2 + Math.cos(angle) * 300, y: survivalZone.y + survivalZone.h / 2 + Math.sin(angle) * 300 };
       }
-      if (map.start === "ring") return { x: 510, y: 1300 };
       return { x: COURSE_W / 2, y: 80 };
     }
     const spawn = spawnFor(me.id);
@@ -190,14 +194,17 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
     const keys: Record<string, boolean> = {};
 
     const down = (event: KeyboardEvent) => {
+      audio.unlock();
       keys[event.key.toLowerCase()] = true;
       if (event.code === "Space") input.current.jump = true;
       if (event.key === "Shift") input.current.dash = true;
       if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.code)) event.preventDefault();
     };
     const up = (event: KeyboardEvent) => { keys[event.key.toLowerCase()] = false; };
+    const unlockAudio = () => audio.unlock();
     addEventListener("keydown", down);
     addEventListener("keyup", up);
+    addEventListener("pointerdown", unlockAudio);
 
     function resize() {
       const dpr = Math.min(devicePixelRatio, 2);
@@ -363,10 +370,10 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
 
     function getRingCenters(zone: SpecialZone): RingPlatform[] {
       return [
-        { x: 510, y: zone.y + 150, r: 225, speed: .43 + zone.phase * .045, phase: zone.phase * .7 },
-        { x: 1050, y: zone.y + 405, r: 225, speed: -.49 - zone.phase * .045, phase: 1.2 + zone.phase * .7 },
-        { x: 535, y: zone.y + 685, r: 225, speed: .54 + zone.phase * .045, phase: 2.4 + zone.phase * .7 },
-        { x: 1065, y: zone.y + 965, r: 225, speed: -.59 - zone.phase * .045, phase: 3.6 + zone.phase * .7 },
+        { x: 510, y: zone.y + 150, r: 270, speed: .28 + zone.phase * .03, phase: zone.phase * .7 },
+        { x: 1050, y: zone.y + 405, r: 250, speed: -.52 - zone.phase * .04, phase: 1.2 + zone.phase * .7 },
+        { x: 535, y: zone.y + 685, r: 285, speed: .78 + zone.phase * .05, phase: 2.4 + zone.phase * .7 },
+        { x: 1065, y: zone.y + 965, r: 260, speed: -1.02 - zone.phase * .06, phase: 3.6 + zone.phase * .7 },
       ];
     }
 
@@ -408,9 +415,11 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
     function respawn(now: number) {
       p.x = COURSE_W / 2; p.y = p.checkpoint + 45; p.vx = 0; p.vy = 0; p.z = 0; p.vz = 0;
       p.falling = false; p.fallTime = 0; p.fallPit = null; p.stun = .55; p.hitCd = .8;
+      p.mana = 100; p.lastJump = -Infinity; p.dashCd = 0; p.dashTime = 0;
       cameraX = p.x; cameraY = p.y;
       progressCb.current(Math.min(99.8, p.y / COURSE * 100), p.x);
-      burst(p.x, p.y, "#8df6ff", 20); showImpact("HỒI SINH!", now);
+      audio.respawn();
+      burst(p.x, p.y, "#8df6ff", 20); showImpact("HỒI SINH · MANA ĐẦY!", now);
     }
 
     function update(dt: number, now: number) {
@@ -449,15 +458,16 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
             p.vz = JUMP_SPEED;
             p.mana -= 25;
             p.lastJump = now;
+            audio.jump();
             burst(p.x, p.y, "#8df6ff", 7);
           } else {
             showImpact("HẾT MANA!", now);
           }
         }
         input.current.jump = false;
-        if (input.current.dash && p.dashCd <= 0 && p.stun <= .2) { p.dashTime = .35; p.dashCd = 3; burst(p.x, p.y - 25, map.accent, 9); }
+        if (input.current.dash && p.dashCd <= 0 && p.stun <= .2) { p.dashTime = .35; p.dashCd = 3; audio.boost(); burst(p.x, p.y - 25, map.accent, 9); }
         input.current.dash = false;
-        if (now - p.lastJump > 900 && p.mana < 100) p.mana = Math.min(100, p.mana + 5 * dt);
+        if (now - p.lastJump > 900 && p.mana < 100) p.mana = Math.min(100, p.mana + 8.5 * dt);
 
         const control = p.stun > 0 ? .1 : 1;
         const acceleration = 1280 * control;
@@ -964,7 +974,9 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
     raf = requestAnimationFrame(loop);
     return () => {
       cancelAnimationFrame(raf);
-      removeEventListener("keydown", down); removeEventListener("keyup", up); removeEventListener("resize", resize);
+      audio.stop();
+      if (audioRef.current === audio) audioRef.current = null;
+      removeEventListener("keydown", down); removeEventListener("keyup", up); removeEventListener("pointerdown", unlockAudio); removeEventListener("resize", resize);
     };
   }, [map.id, map.accent, map.floor, map.sky, me.color, me.id, me.name, round, startedAt, isSurvival, map.start]);
 
@@ -985,10 +997,17 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
   const aliveCount = players.filter((player) => !player.finishPosition).length;
   const survivalPercent = players.length ? aliveCount / players.length * 100 : 100;
 
+  function toggleSound() {
+    const next = !soundOn;
+    setSoundOn(next);
+    audioRef.current?.setEnabled(next);
+  }
+
   return <div className="race-game">
     <canvas ref={canvasRef}/>
     {countdown && <div className="race-countdown">{countdown}</div>}
     {impact && <div className="impact-callout">{impact}</div>}
+    <button className={`sound-toggle ${soundOn ? "" : "muted"}`} onClick={toggleSound} aria-label={soundOn ? "Tắt âm thanh" : "Bật âm thanh"}><b>{soundOn ? "♪" : "×"}</b><span>{soundOn ? "ÂM THANH" : "ĐÃ TẮT"}</span></button>
     <div className="player-hud">
       <div><small>{isSurvival?"CÒN TRỤ":"TIẾN ĐỘ"}</small><b>{isSurvival?aliveCount:`${Math.min(100, Math.round(localProgress))}%`}</b></div>
       <div className="hud-map"><span>{map.name} · {isSurvival?"SINH TỒN":"ROUND"} {round}</span><i><b style={{ width: `${isSurvival?survivalPercent:localProgress}%` }}/></i></div>

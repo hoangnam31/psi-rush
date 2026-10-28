@@ -1,6 +1,6 @@
 export const MAPS = [
   { id: "neon", name: "Neon Gauntlet", subtitle: "Đường đua va đập hỗn loạn", mode: "race", start: "line", sky: "#24105f", floor: "#8b5cf6", accent: "#ff3d9a" },
-  { id: "sky", name: "Sky Ring Run", subtitle: "Xuất hiện ngay trên đĩa bay đầu tiên", mode: "race", start: "ring", sky: "#176baf", floor: "#53c9f5", accent: "#ffe14a" },
+  { id: "sky", name: "Sky Ring Run", subtitle: "Xuất phát từ vạch đua, chinh phục đĩa xoay", mode: "race", start: "line", sky: "#176baf", floor: "#53c9f5", accent: "#ffe14a" },
   { id: "jungle", name: "Caro Sụp Đổ", subtitle: "Sinh tồn trên bàn caro khép kín", mode: "survival", start: "tiles", sky: "#0f5f53", floor: "#45c77e", accent: "#ffb238" },
   { id: "ice", name: "Ice Drift", subtitle: "Đường trượt và tường quét ngang", mode: "race", start: "line", sky: "#2756a6", floor: "#a6edff", accent: "#ffffff" },
   { id: "lava", name: "Đảo Xoay Sinh Tồn", subtitle: "Sinh tồn trên một đảo xoay", mode: "survival", start: "arena", sky: "#5a1522", floor: "#c84930", accent: "#ffdd42" },
