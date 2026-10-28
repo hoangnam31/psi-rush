@@ -70,8 +70,8 @@ export default function HostPage() {
       <Leaderboard players={ranked} currentResults={currentResults} title="XẾP HẠNG TRỰC TIẾP" mode={mode}/>
     </section>}
     {(room.status==="results"||room.status==="finished")&&<section className="results-admin">
-      <div className="results-hero"><span className="eyebrow">{room.status==="finished"?"GIẢI ĐẤU KẾT THÚC":`KẾT QUẢ ROUND ${room.currentRound}`}</span><h2>{room.status==="finished"?"NHÀ VÔ ĐỊCH":"ROUND COMPLETE!"}</h2><Podium players={ranked}/><div className="result-actions">{room.status!=="finished"&&room.currentRound<room.totalRounds&&<button className="primary-action" onClick={()=>act("next")}>ROUND TIẾP THEO →</button>}{room.status!=="finished"&&<button className="secondary-action" onClick={()=>act("finishGame")}>KẾT THÚC GAME</button>}{room.status==="finished"&&<><button className="secondary-action" onClick={()=>act("reset")}>CHƠI LẠI CÙNG NHÓM ↻</button><button className="primary-action" onClick={createFreshRoom}>TẠO PHÒNG MỚI ＋</button></>}</div></div>
-      <Leaderboard players={ranked} currentResults={currentResults} title="BẢNG ĐIỂM TỔNG" mode={mode}/>
+      <div className="results-hero"><span className="eyebrow">{room.status==="finished"?`KẾT QUẢ SAU ${room.totalRounds} ROUND`:`KẾT QUẢ ROUND ${room.currentRound}/${room.totalRounds}`}</span><h2>{room.status==="finished"?"NHÀ VÔ ĐỊCH":"ROUND COMPLETE!"}</h2><Podium players={ranked}/><div className="result-actions">{room.status!=="finished"&&room.currentRound<room.totalRounds&&<button className="primary-action" onClick={()=>act("next")}>BẮT ĐẦU ROUND {room.currentRound+1} →</button>}{room.status==="finished"&&<><button className="secondary-action" onClick={()=>act("reset")}>CHƠI LẠI CÙNG NHÓM ↻</button><button className="primary-action" onClick={createFreshRoom}>TẠO PHÒNG MỚI ＋</button></>}</div></div>
+      <Leaderboard players={ranked} currentResults={currentResults} title={room.status==="finished"?"BẢNG XẾP HẠNG CHUNG CUỘC":`TỔNG ĐIỂM SAU ROUND ${room.currentRound}`} mode={mode}/>
     </section>}
     {error&&<div className="error-toast">{error}</div>}
   </main>;

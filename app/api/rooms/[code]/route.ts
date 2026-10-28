@@ -74,7 +74,8 @@ export async function POST(request: Request, context: Context) {
             await db.update(players).set({ finishPosition: position, score: sql`${players.score} + ${points}` }).where(eq(players.id, survivor.id));
           }
         }
-        await db.update(rooms).set({ status: "results", updatedAt: sql`CURRENT_TIMESTAMP` }).where(eq(rooms.id, room.id));
+        const roundStatus = room.currentRound >= room.totalRounds ? "finished" : "results";
+        await db.update(rooms).set({ status: roundStatus, updatedAt: sql`CURRENT_TIMESTAMP` }).where(eq(rooms.id, room.id));
       } else if (action === "finishGame") {
         await db.update(rooms).set({ status: "finished", updatedAt: sql`CURRENT_TIMESTAMP` }).where(eq(rooms.id, room.id));
       } else {
