@@ -35,7 +35,10 @@ type RemoteState = { x: number; y: number; targetX: number; targetY: number; vx:
 const COURSE = 10000;
 const START_LINE = 230;
 const PLAYER_R = 38;
-const CHECKPOINTS = [80, 2500, 5000, 7500];
+const DEFAULT_CHECKPOINTS = [80, 2500, 5000, 7500];
+// Each Neon Sky checkpoint sits on a solid recovery strip after a ring abyss
+// and before the next neon obstacle group.
+const NEON_SKY_CHECKPOINTS = [80, 2100, 4230, 6380, 8500];
 const JUMP_SPEED = 650;
 const GRAVITY = 1450;
 const PIT_LENGTH = 180;
@@ -197,6 +200,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
     let renderScale = .6;
     const playerCount = Math.max(1, playersRef.current.length);
     const courseWidth = courseWidthForPlayers(playerCount);
+    const checkpoints = map.id === "sky" ? NEON_SKY_CHECKPOINTS : DEFAULT_CHECKPOINTS;
     const { obstacles, spinners, pits, bridges, zones } = buildCourse(map.id, courseWidth, playerCount);
     const survivalZone = isSurvival ? zones[0] : null;
     function spawnFor(playerId: string) {
@@ -700,9 +704,9 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
         hitDynamicHazards(raceSeconds, now);
         collideWithPlayers(now);
 
-        for (let index = isSurvival ? 0 : CHECKPOINTS.length - 1; index >= 1; index--) {
-          if (p.y >= CHECKPOINTS[index] && index > p.checkpointIndex) {
-            p.checkpointIndex = index; p.checkpoint = CHECKPOINTS[index];
+        for (let index = isSurvival ? 0 : checkpoints.length - 1; index >= 1; index--) {
+          if (p.y >= checkpoints[index] && index > p.checkpointIndex) {
+            p.checkpointIndex = index; p.checkpoint = checkpoints[index];
             audio.checkpoint();
             burst(p.x, p.y, "#45f4ff", 18); showImpact(`CHECKPOINT ${index}!`, now);
             break;
@@ -886,8 +890,8 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
 
       if (map.start === "line") drawCheckeredLine(context, START_LINE, "XUẤT PHÁT", sx, sy, perspective);
       drawCheckeredLine(context, COURSE, "VỀ ĐÍCH", sx, sy, perspective);
-      for (let index = 1; index < CHECKPOINTS.length; index++) {
-        drawCheckpointLine(context, CHECKPOINTS[index], index, sx, sy, perspective);
+      for (let index = 1; index < checkpoints.length; index++) {
+        drawCheckpointLine(context, checkpoints[index], index, sx, sy, perspective);
       }
 
       const firstPost = Math.floor((cameraY - 600) / 320) * 320;
