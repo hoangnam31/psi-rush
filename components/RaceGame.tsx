@@ -71,6 +71,7 @@ function buildCourse(id: string, courseWidth: number, playerCount: number) {
   const obstacles: Obstacle[] = [];
   const spinners: Spinner[] = [];
   const pits: Pit[] = [];
+  const bridgePits: Pit[] = [];
   const bridges: BridgePlatform[] = [];
   const zones: SpecialZone[] = [];
   const survivalSize = survivalSizeForPlayers(playerCount);
@@ -101,6 +102,7 @@ function buildCourse(id: string, courseWidth: number, playerCount: number) {
 
   for (let zone = 1; zone <= (id === "ice" ? 12 : 0); zone++) {
     const y = 650 + zone * 720 + (seed * zone) % 145;
+    const difficulty = zone / 12;
     const type: number = zone % 4;
     if (type === 0) {
       const gapWidth = 390;
@@ -111,13 +113,13 @@ function buildCourse(id: string, courseWidth: number, playerCount: number) {
       );
     } else if (type === 1) {
       spinners.push({
-        x: zone % 2 ? 470 : 1130, y, len: 265 + (seed + zone) % 75,
-        speed: (zone % 2 ? 1 : -1) * (1.7 + (zone % 4) * 0.35), phase: zone, color: colors[zone % 4],
+        x: zone % 2 ? courseWidth * .3 : courseWidth * .7, y, len: 265 + (seed + zone) % 75,
+        speed: (zone % 2 ? 1 : -1) * (.72 + difficulty * 1.7), phase: zone, color: colors[zone % 4],
       });
     } else if (type === 2) {
       obstacles.push({
         x: courseWidth / 2 - 125, y, w: 250, h: 88, kind: "mover", color: colors[zone % 4],
-        amp: Math.min(650, courseWidth * .34), speed: 1.25 + (zone % 3) * 0.28, phase: zone,
+        amp: Math.min(650, courseWidth * .34), speed: .55 + difficulty * 1.35, phase: zone,
       });
     } else {
       obstacles.push(
@@ -142,21 +144,24 @@ function buildCourse(id: string, courseWidth: number, playerCount: number) {
     );
   }
   if (id === "ice") {
-    [3000, 6800].forEach((y, pitIndex) => {
-      const pit = { x: 70, y, w: courseWidth - 140, h: 640 };
-      pits.push(pit);
+    [3000, 6500].forEach((y, pitIndex) => {
+      const pit = { x: 70, y, w: courseWidth - 140, h: 900 };
+      pits.push(pit); bridgePits.push(pit);
       for (let row = 0; row < 4; row++) bridges.push({
-        x: courseWidth / 2 - 135, y: y + 45 + row * 148, w: 270, h: 118,
-        amp: Math.min(courseWidth * .35, 720), speed: (row % 2 ? -1 : 1) * (1.05 + row * .16), phase: pitIndex * 1.7 + row,
+        x: courseWidth / 2 - 170, y: y + 35 + row * 220, w: 340, h: 140,
+        amp: Math.min(pitIndex ? 720 : 520, courseWidth / 2 - 260),
+        speed: (row % 2 ? -1 : 1) * (pitIndex ? 1 + row * .18 : .48 + row * .08),
+        phase: pitIndex * 1.7 + row * 1.35,
         color: row % 2 ? "#7ce9ff" : "#f1fdff",
       });
     });
   }
   const courseLimit = COURSE - FINISH_CLEARANCE;
+  const overlapsBridgePit = (y: number, height: number) => bridgePits.some((pit) => y < pit.y + pit.h && y + height > pit.y);
   return {
-    obstacles: obstacles.filter((obstacle) => obstacle.y + obstacle.h <= courseLimit),
-    spinners: spinners.filter((spinner) => spinner.y + spinner.len <= courseLimit),
-    pits: pits.filter((pit) => pit.y + pit.h <= courseLimit),
+    obstacles: obstacles.filter((obstacle) => obstacle.y + obstacle.h <= courseLimit && !overlapsBridgePit(obstacle.y, obstacle.h)),
+    spinners: spinners.filter((spinner) => spinner.y + spinner.len <= courseLimit && !overlapsBridgePit(spinner.y - spinner.len, spinner.len * 2)),
+    pits: pits.filter((pit) => pit.y + pit.h <= courseLimit && (bridgePits.includes(pit) || !overlapsBridgePit(pit.y, pit.h))),
     bridges: bridges.filter((bridge) => bridge.y + bridge.h <= courseLimit),
     zones: zones.filter((zone) => zone.y + zone.h <= courseLimit),
   };
@@ -1100,7 +1105,12 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       const scale = perspective(obstacle.y);
       const left = sx(obstacleX, obstacle.y), right = sx(obstacleX + obstacle.w, obstacle.y);
       const nearY = sy(obstacle.y), farY = sy(obstacle.y + obstacle.h);
-      const rise = obstacle.low ? Math.max(10, 18 * renderScale) : Math.max(26, 56 * renderScale);
+      const highSweepWall = map.id === "sweep" && obstacle.kind === "mover" && obstacle.low === false;
+      const rise = obstacle.low
+        ? Math.max(10, 18 * renderScale)
+        : highSweepWall
+          ? Math.max(42, 160 * renderScale)
+          : Math.max(26, 56 * renderScale);
       const topColor = colorMix(obstacle.color, "#ffffff", .28), sideColor = colorMix(obstacle.color, "#000000", .23);
       context.fillStyle = "rgba(13,4,38,.28)";
       context.fillRect(left + 7, farY + 7, Math.max(0, right - left), Math.max(5, nearY - farY));
@@ -1113,6 +1123,21 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       context.strokeStyle = "rgba(255,255,255,.72)"; context.lineWidth = Math.max(2, 3 * renderScale);
       context.strokeRect(left, farY - rise, Math.max(0, right - left), Math.max(0, nearY - farY));
       context.fillStyle = "rgba(255,255,255,.38)"; context.fillRect(left + 10 * scale, nearY - rise + 8 * scale, Math.max(0, right - left - 20 * scale), 6 * scale);
+      if (highSweepWall) {
+        context.save();
+        context.globalAlpha = .42;
+        context.strokeStyle = "#ffffff";
+        context.lineWidth = Math.max(2, 5 * renderScale);
+        const stripeCount = Math.max(2, Math.min(7, Math.floor((right - left) / 34)));
+        for (let index = 1; index <= stripeCount; index++) {
+          const stripeX = left + (right - left) * index / (stripeCount + 1);
+          context.beginPath();
+          context.moveTo(stripeX - 7 * scale, nearY - 7 * scale);
+          context.lineTo(stripeX + 7 * scale, nearY - rise + 9 * scale);
+          context.stroke();
+        }
+        context.restore();
+      }
       if (obstacle.kind === "mover") {
         context.fillStyle = "#ffffff"; context.font = `900 ${Math.max(8, 17 * scale)}px system-ui`; context.textAlign = "center"; context.fillText("⇆", (left + right) / 2, nearY - rise * .35);
       }
