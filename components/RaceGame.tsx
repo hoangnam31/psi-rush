@@ -782,7 +782,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       const survivalFit = survivalZone ? Math.min(w / (survivalZone.w + 220), h / (survivalZone.h + 260)) : .4;
       const raceFit = w / (courseWidth + 160);
       const baseScale = isSurvival
-        ? Math.max(.24, Math.min(.68, survivalFit * 1.05))
+        ? Math.max(.42, Math.min(.9, survivalFit * 1.42))
         : Math.max(.42, Math.min(.9, raceFit * 1.08));
       renderScale = baseScale;
       const playerScreenY = isSurvival ? h * .52 : h * .72;
