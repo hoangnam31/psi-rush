@@ -238,7 +238,8 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
     const p = {
       x: spawn.x, y: spawn.y, vx: 0, vy: 0, z: 0, vz: 0, stun: 0, hitCd: 0,
       dashCd: 0, dashTime: 0, mana: 100, lastJump: -Infinity,
-      falling: false, fallTime: 0, fallPit: null as Pit | null, fallEdge: false, checkpoint: spawn.y, checkpointIndex: 0,
+      falling: false, fallTime: 0, fallPit: null as Pit | null, fallEdge: false,
+      disintegrating: false, disintegrateTime: 0, checkpoint: spawn.y, checkpointIndex: 0,
     };
     const particles: Particle[] = [];
     const remoteStates = new Map<string, RemoteState>();
@@ -556,11 +557,12 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
         }
       }
       for (const laser of getLaserBeams(time)) {
-        if (p.z > 58 || p.hitCd > 0 || segmentDistance(p.x, p.y, laser.x1, laser.y1, laser.x2, laser.y2) > PLAYER_R + 18) continue;
-        p.vx = laser.vx * 1.85 + (laser.vy ? Math.sign(p.x - (laser.x1 + laser.x2) / 2) * 220 : 0);
-        p.vy = laser.vy * 1.85 + (laser.vx ? Math.sign(p.y - (laser.y1 + laser.y2) / 2) * 220 : 0);
-        p.vz = 220; p.stun = .68; p.hitCd = .42; shake = 1;
-        audio.collision(true); burst(p.x, p.y, laser.color, 18); showImpact("LASER QUÉT!", now);
+        if (p.disintegrating || p.z > 58 || p.hitCd > 0 || segmentDistance(p.x, p.y, laser.x1, laser.y1, laser.x2, laser.y2) > PLAYER_R + 18) continue;
+        p.disintegrating = true; p.disintegrateTime = 0; p.vx = 0; p.vy = 0; p.vz = 0; p.stun = 1; p.hitCd = 1;
+        shake = 1.15; audio.collision(true);
+        burst(p.x, p.y, laser.color, 24); burst(p.x, p.y, "#ffffff", 18); burst(p.x, p.y, "#ff3d9a", 14);
+        showImpact("BỊ LASER LOẠI!", now);
+        return;
       }
     }
 
@@ -573,6 +575,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
     function respawn(now: number) {
       p.x = courseWidth / 2; p.y = p.checkpoint + 45; p.vx = 0; p.vy = 0; p.z = 0; p.vz = 0;
       p.falling = false; p.fallTime = 0; p.fallPit = null; p.fallEdge = false; p.stun = .55; p.hitCd = .8;
+      p.disintegrating = false; p.disintegrateTime = 0;
       p.mana = 100; p.lastJump = -Infinity; p.dashCd = 0; p.dashTime = 0;
       cameraX = p.x; cameraY = p.y;
       progressCb.current(Math.min(99.8, p.y / COURSE * 100), p.x);
@@ -595,7 +598,13 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       p.dashCd = Math.max(0, p.dashCd - dt);
       p.dashTime = Math.max(0, p.dashTime - dt);
 
-      if (p.falling) {
+      if (p.disintegrating) {
+        p.disintegrateTime += dt;
+        if (p.disintegrateTime >= .48 && !eliminationSent) {
+          eliminationSent = true; finished = true;
+          eliminateCb.current(Math.max(0, Date.now() - roundGoEpoch));
+        }
+      } else if (p.falling) {
         p.fallTime += dt;
         p.x += p.vx * dt; p.y += p.vy * dt;
         p.z -= (260 + p.fallTime * 520) * dt;
@@ -702,26 +711,28 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
           }
         }
         hitDynamicHazards(raceSeconds, now);
-        collideWithPlayers(now);
+        if (!p.disintegrating) {
+          collideWithPlayers(now);
 
-        for (let index = isSurvival ? 0 : checkpoints.length - 1; index >= 1; index--) {
-          if (p.y >= checkpoints[index] && index > p.checkpointIndex) {
-            p.checkpointIndex = index; p.checkpoint = checkpoints[index];
-            audio.checkpoint();
-            burst(p.x, p.y, "#45f4ff", 18); showImpact(`CHECKPOINT ${index}!`, now);
-            break;
+          for (let index = isSurvival ? 0 : checkpoints.length - 1; index >= 1; index--) {
+            if (p.y >= checkpoints[index] && index > p.checkpointIndex) {
+              p.checkpointIndex = index; p.checkpoint = checkpoints[index];
+              audio.checkpoint();
+              burst(p.x, p.y, "#45f4ff", 18); showImpact(`CHECKPOINT ${index}!`, now);
+              break;
+            }
           }
+          const activePit = p.z < 48 ? getPitAtPlayer(raceSeconds) ?? getSpecialPitAtPlayer(raceSeconds) : null;
+          const fellLeft = p.x < -PLAYER_R * 1.5, fellRight = p.x > courseWidth + PLAYER_R * 1.5, fellBack = p.y < -80;
+          const edgePit = fellLeft
+            ? { x: -courseWidth, y: p.y - 700, w: courseWidth, h: 1400 }
+            : fellRight
+              ? { x: courseWidth, y: p.y - 700, w: courseWidth, h: 1400 }
+              : fellBack
+                ? { x: 0, y: -1200, w: courseWidth, h: 1200 }
+                : null;
+          if (edgePit || activePit) beginFall(now, activePit ?? edgePit, Boolean(edgePit));
         }
-        const activePit = p.z < 48 ? getPitAtPlayer(raceSeconds) ?? getSpecialPitAtPlayer(raceSeconds) : null;
-        const fellLeft = p.x < -PLAYER_R * 1.5, fellRight = p.x > courseWidth + PLAYER_R * 1.5, fellBack = p.y < -80;
-        const edgePit = fellLeft
-          ? { x: -courseWidth, y: p.y - 700, w: courseWidth, h: 1400 }
-          : fellRight
-            ? { x: courseWidth, y: p.y - 700, w: courseWidth, h: 1400 }
-            : fellBack
-              ? { x: 0, y: -1200, w: courseWidth, h: 1200 }
-              : null;
-        if (edgePit || activePit) beginFall(now, activePit ?? edgePit, Boolean(edgePit));
         if (isSurvival && survivalZone) { cameraX = survivalZone.x + survivalZone.w / 2; cameraY = survivalZone.y + survivalZone.h / 2; }
         else { cameraX = p.x; cameraY = p.y; }
       }
@@ -848,7 +859,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
         ctx.beginPath(); ctx.arc(sx(particle.x, particle.y), y, 3 + particle.life * 5, 0, Math.PI * 2); ctx.fill();
       }
       ctx.globalAlpha = 1;
-      if (!p.falling) drawBean(ctx, sx(p.x, p.y), sy(p.y) - p.z * baseScale, 35 * baseScale, me.color, me.name, 1, raceSeconds, true, p.stun);
+      if (!p.falling && !p.disintegrating) drawBean(ctx, sx(p.x, p.y), sy(p.y) - p.z * baseScale, 35 * baseScale, me.color, me.name, 1, raceSeconds, true, p.stun);
       ctx.restore();
 
     }
