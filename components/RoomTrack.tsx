@@ -217,7 +217,7 @@ function MapFeatures({ mapId, round, roundSeconds, courseWidth }: { mapId: strin
       <span className="admin-course-gate intro" style={{ bottom: `${raceBottom(540)}%` }}><b style={{ left: 0, width: "24%" }}/><b style={{ left: "72%", right: 0 }}/></span>
       <b className="admin-moving-block ice" style={{ bottom: `${raceBottom(870)}%`, left: `${(courseWidth / 2 - 145 + Math.sin(roundSeconds * .42 + .4) * Math.min(310, courseWidth * .2)) / courseWidth * 100}%`, width: `${290 / courseWidth * 100}%` }}/>
       {zones.map(({ zone, y }) => {
-        if ([3000, 6500].some((pitY) => y > pitY && y < pitY + 900)) return null;
+        if ([3000, 6200].some((pitY) => y > pitY && y < pitY + 1080)) return null;
         const type = zone % 4;
         if (type === 0) {
           const gapWidth = 390;
@@ -231,12 +231,12 @@ function MapFeatures({ mapId, round, roundSeconds, courseWidth }: { mapId: strin
         }
         return <span className="admin-ice-double" key={zone} style={{ bottom: `${raceBottom(y)}%` }}><b/><b/></span>;
       })}
-      {[3000, 6500].map((pitY, pitIndex) => <span className="admin-ice-abyss" key={pitY} style={{ bottom: `${raceBottom(pitY)}%`, height: `${900 / COURSE * 100}%` }}>
+      {[3000, 6200].map((pitY, pitIndex) => <span className="admin-ice-abyss" key={pitY} style={{ bottom: `${raceBottom(pitY)}%`, height: `${1080 / COURSE * 100}%` }}>
         {Array.from({ length: 4 }, (_, row) => {
-          const amp = Math.min(pitIndex ? 480 : 350, courseWidth / 2 - 280);
-          const speed = pitIndex ? .76 : .42;
-          const x = courseWidth / 2 - 180 + Math.sin(roundSeconds * speed + pitIndex * .55 + row * .2) * amp;
-          return <b key={row} style={{ bottom: `${(30 + row * 220) / 900 * 100}%`, left: `${x / courseWidth * 100}%`, width: `${360 / courseWidth * 100}%`, height: `${145 / 900 * 100}%` }}/>;
+          const amp = Math.min(pitIndex ? 420 : 300, courseWidth / 2 - 330);
+          const speed = pitIndex ? .68 : .38;
+          const x = courseWidth / 2 - 250 + Math.sin(roundSeconds * speed + pitIndex * .55 + row * .2) * amp;
+          return <b key={row} style={{ bottom: `${(25 + row * 270) / 1080 * 100}%`, left: `${x / courseWidth * 100}%`, width: `${500 / courseWidth * 100}%`, height: `${185 / 1080 * 100}%` }}/>;
         })}
       </span>)}
     </div>;

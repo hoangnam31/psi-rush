@@ -155,13 +155,16 @@ function buildCourse(id: string, courseWidth: number, playerCount: number) {
       { x: courseWidth * .18, y: 1160, w: 96, h: 96, kind: "bumper", color: "#f1fdff", phase: 0 },
       { x: courseWidth * .76, y: 1160, w: 96, h: 96, kind: "bumper", color: "#d8f9ff", phase: 1 },
     );
-    [3000, 6500].forEach((y, pitIndex) => {
-      const pit = { x: 70, y, w: courseWidth - 140, h: 900 };
+    [3000, 6200].forEach((y, pitIndex) => {
+      // Extend the abyss past both road edges so it cannot be bypassed by
+      // hugging the outer collision boundary. The larger floes leave clear,
+      // jumpable gaps while giving crowded rooms enough landing space.
+      const pit = { x: -PLAYER_R * 2, y, w: courseWidth + PLAYER_R * 4, h: 1080 };
       pits.push(pit); bridgePits.push(pit);
       for (let row = 0; row < 4; row++) bridges.push({
-        x: courseWidth / 2 - 180, y: y + 30 + row * 220, w: 360, h: 145,
-        amp: Math.min(pitIndex ? 480 : 350, courseWidth / 2 - 280),
-        speed: pitIndex ? .76 : .42,
+        x: courseWidth / 2 - 250, y: y + 25 + row * 270, w: 500, h: 185,
+        amp: Math.min(pitIndex ? 420 : 300, courseWidth / 2 - 330),
+        speed: pitIndex ? .68 : .38,
         phase: pitIndex * .55 + row * .2,
         color: row % 2 ? "#7ce9ff" : "#f1fdff",
       });
