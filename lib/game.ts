@@ -33,8 +33,18 @@ export function scoreForPosition(position: number) {
   return podium[position - 1] ?? Math.max(5, 20 - Math.floor((position - 10) / 5) * 2);
 }
 
-export function pickMap(pool: string[], previous?: string | null) {
-  const choices = pool.filter((id) => id !== previous);
-  const source = choices.length ? choices : pool;
-  return source[Math.floor(Math.random() * source.length)] ?? MAPS[0].id;
+export function pickMap(pool: string[], previous?: string | null, roundNumber = 1, roomSeed = "") {
+  const validIds = new Set<string>(MAPS.map((map) => map.id));
+  const source = [...new Set(pool.filter((id) => validIds.has(id)))];
+  const maps = source.length ? source : MAPS.map((map) => map.id);
+  let state = [...`${roomSeed}:${maps.join(":")}`].reduce((value, char) => ((value * 31 + char.charCodeAt(0)) >>> 0), 2166136261);
+  const shuffled = [...maps];
+  for (let index = shuffled.length - 1; index > 0; index--) {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    const swapIndex = state % (index + 1);
+    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+  }
+  const selected = shuffled[(Math.max(1, roundNumber) - 1) % shuffled.length];
+  if (shuffled.length > 1 && selected === previous && roundNumber === 1) return shuffled[1];
+  return selected ?? MAPS[0].id;
 }

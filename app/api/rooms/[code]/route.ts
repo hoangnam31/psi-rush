@@ -61,7 +61,7 @@ export async function POST(request: Request, context: Context) {
         } else {
           const playerCount = (await db.select({ count: sql<number>`count(*)` }).from(players).where(eq(players.roomId, room.id)))[0]?.count ?? 1;
           await db.update(players).set({ progress: 0, positionX: Math.round(courseWidthForPlayers(playerCount) / 2), finishPosition: null }).where(eq(players.roomId, room.id));
-          await db.update(rooms).set({ status: "racing", currentRound: nextRound, currentMap: pickMap(pool, room.currentMap), updatedAt: sql`CURRENT_TIMESTAMP` }).where(eq(rooms.id, room.id));
+          await db.update(rooms).set({ status: "racing", currentRound: nextRound, currentMap: pickMap(pool, room.currentMap, nextRound, room.id), updatedAt: sql`CURRENT_TIMESTAMP` }).where(eq(rooms.id, room.id));
         }
       } else if (action === "endRound") {
         if (getMapMode(room.currentMap) === "survival") {
