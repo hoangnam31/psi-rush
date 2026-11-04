@@ -807,8 +807,11 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       }
 
       for (const pit of [...pits].sort((a, b) => b.y - a.y)) {
-        const y = sy(pit.y);
-        if (y < -220 || y > h + 220) continue;
+        const pitStart = sy(pit.y);
+        const pitEnd = sy(pit.y + pit.h);
+        // Long Ice Drift abysses may straddle the camera after the player has
+        // crossed them. Cull only when both ends are completely off-screen.
+        if (Math.max(pitStart, pitEnd) < -220 || Math.min(pitStart, pitEnd) > h + 220) continue;
         drawPit(ctx, pit, sx, sy, perspective, now);
       }
 
