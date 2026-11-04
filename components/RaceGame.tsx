@@ -641,13 +641,16 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
           const ring = getSupportingRing(raceSeconds);
           if (ring) {
             const dx = p.x - ring.x, dy = p.y - ring.y;
-            const angle = ring.speed * dt * .82;
+            // Canvas Y points down while world Y points forward/up on screen.
+            // Invert the angular velocity so physical carry matches the visible spin.
+            const surfaceSpin = -ring.speed;
+            const angle = surfaceSpin * dt * .82;
             const cosine = Math.cos(angle), sine = Math.sin(angle);
             p.x = ring.x + dx * cosine - dy * sine;
             p.y = ring.y + dx * sine + dy * cosine;
             p.x += Math.cos(raceSeconds * ring.moveSpeed + ring.phase) * ring.moveAmp * ring.moveSpeed * dt;
-            p.vx += -dy * ring.speed * dt * .24 + Math.cos(raceSeconds * ring.moveSpeed + ring.phase) * ring.moveAmp * ring.moveSpeed * dt;
-            p.vy += dx * ring.speed * dt * .24;
+            p.vx += -dy * surfaceSpin * dt * .24 + Math.cos(raceSeconds * ring.moveSpeed + ring.phase) * ring.moveAmp * ring.moveSpeed * dt;
+            p.vy += dx * surfaceSpin * dt * .24;
           }
         }
 
