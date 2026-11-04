@@ -234,7 +234,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
     const p = {
       x: spawn.x, y: spawn.y, vx: 0, vy: 0, z: 0, vz: 0, stun: 0, hitCd: 0,
       dashCd: 0, dashTime: 0, mana: 100, lastJump: -Infinity,
-      falling: false, fallTime: 0, fallPit: null as Pit | null, checkpoint: spawn.y, checkpointIndex: 0,
+      falling: false, fallTime: 0, fallPit: null as Pit | null, fallEdge: false, checkpoint: spawn.y, checkpointIndex: 0,
     };
     const particles: Particle[] = [];
     const remoteStates = new Map<string, RemoteState>();
@@ -560,15 +560,15 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       }
     }
 
-    function beginFall(now: number, pit: Pit | null) {
+    function beginFall(now: number, pit: Pit | null, edge = false) {
       if (p.falling) return;
-      p.falling = true; p.fallTime = 0; p.fallPit = pit; p.vx *= .28; p.vy *= .28; p.vz = -120;
+      p.falling = true; p.fallTime = 0; p.fallPit = pit; p.fallEdge = edge; p.vx *= .28; p.vy *= .28; p.vz = -120;
       shake = .75; burst(p.x, p.y, "#ab7cff", 14); showImpact("RƠI XUỐNG VỰC!", now);
     }
 
     function respawn(now: number) {
       p.x = courseWidth / 2; p.y = p.checkpoint + 45; p.vx = 0; p.vy = 0; p.z = 0; p.vz = 0;
-      p.falling = false; p.fallTime = 0; p.fallPit = null; p.stun = .55; p.hitCd = .8;
+      p.falling = false; p.fallTime = 0; p.fallPit = null; p.fallEdge = false; p.stun = .55; p.hitCd = .8;
       p.mana = 100; p.lastJump = -Infinity; p.dashCd = 0; p.dashTime = 0;
       cameraX = p.x; cameraY = p.y;
       progressCb.current(Math.min(99.8, p.y / COURSE * 100), p.x);
@@ -706,7 +706,15 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
           }
         }
         const activePit = p.z < 48 ? getPitAtPlayer(raceSeconds) ?? getSpecialPitAtPlayer(raceSeconds) : null;
-        if (p.x < -PLAYER_R * 1.5 || p.x > courseWidth + PLAYER_R * 1.5 || p.y < -80 || activePit) beginFall(now, activePit);
+        const fellLeft = p.x < -PLAYER_R * 1.5, fellRight = p.x > courseWidth + PLAYER_R * 1.5, fellBack = p.y < -80;
+        const edgePit = fellLeft
+          ? { x: -courseWidth, y: p.y - 700, w: courseWidth, h: 1400 }
+          : fellRight
+            ? { x: courseWidth, y: p.y - 700, w: courseWidth, h: 1400 }
+            : fellBack
+              ? { x: 0, y: -1200, w: courseWidth, h: 1200 }
+              : null;
+        if (edgePit || activePit) beginFall(now, activePit ?? edgePit, Boolean(edgePit));
         if (isSurvival && survivalZone) { cameraX = survivalZone.x + survivalZone.w / 2; cameraY = survivalZone.y + survivalZone.h / 2; }
         else { cameraX = p.x; cameraY = p.y; }
       }
@@ -764,6 +772,27 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
         drawPit(ctx, pit, sx, sy, perspective, now);
       }
 
+      if (p.falling) {
+        const fallScale = Math.max(.06, 1 - p.fallTime * 1.15);
+        const fallAlpha = Math.max(.04, 1 - p.fallTime * 1.08);
+        const fallDrop = Math.min(h * .88, p.fallTime * p.fallTime * 620 + p.fallTime * 70);
+        const playerScale = 35 * baseScale * fallScale;
+        const playerY = sy(p.y) + fallDrop;
+        ctx.save();
+        if (p.fallPit) clipPit(ctx, p.fallPit, sx, sy);
+        drawBean(ctx, sx(p.x, p.y), playerY, playerScale, me.color, me.name, fallAlpha, raceSeconds, true, p.stun);
+        ctx.restore();
+
+        // Repaint solid platforms after the falling bean so the character truly
+        // travels behind the floor instead of floating over it.
+        for (const zone of zones) {
+          const zoneStart = sy(zone.y), zoneEnd = sy(zone.y + zone.h);
+          if (Math.max(zoneStart, zoneEnd) < -200 || Math.min(zoneStart, zoneEnd) > h + 200) continue;
+          drawSpecialZone(ctx, zone, raceSeconds, sx, sy, perspective, now, false);
+        }
+        if (p.fallPit && !p.fallEdge) drawPitRim(ctx, p.fallPit, sx, sy, perspective);
+      }
+
       for (const bridge of bridges) {
         const y = sy(bridge.y);
         if (y < -180 || y > h + 180) continue;
@@ -812,20 +841,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
         ctx.beginPath(); ctx.arc(sx(particle.x, particle.y), y, 3 + particle.life * 5, 0, Math.PI * 2); ctx.fill();
       }
       ctx.globalAlpha = 1;
-      const fallScale = p.falling ? Math.max(.22, 1 - p.fallTime * .66) : 1;
-      const fallAlpha = p.falling ? Math.max(.22, 1 - p.fallTime * .7) : 1;
-      const playerScale = 35 * baseScale * fallScale;
-      const fallDrop = p.falling ? Math.min(115, p.fallTime * p.fallTime * 150) : 0;
-      const playerY = p.falling ? sy(p.y) + fallDrop : sy(p.y) - p.z * baseScale;
-      if (p.falling && p.fallPit) {
-        ctx.save();
-        clipPit(ctx, p.fallPit, sx, sy);
-        drawBean(ctx, sx(p.x, p.y), playerY, playerScale, me.color, me.name, fallAlpha, raceSeconds, true, p.stun);
-        ctx.restore();
-        drawPitRim(ctx, p.fallPit, sx, sy, perspective);
-      } else {
-        drawBean(ctx, sx(p.x, p.y), playerY, playerScale, me.color, me.name, fallAlpha, raceSeconds, true, p.stun);
-      }
+      if (!p.falling) drawBean(ctx, sx(p.x, p.y), sy(p.y) - p.z * baseScale, 35 * baseScale, me.color, me.name, 1, raceSeconds, true, p.stun);
       ctx.restore();
 
     }
@@ -920,8 +936,9 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
     function drawSpecialZone(
       context: CanvasRenderingContext2D, zone: SpecialZone, time: number,
       sx: (x: number, y: number) => number, sy: (y: number) => number, perspective: (y: number) => number, now: number,
+      includePit = true,
     ) {
-      drawPit(context, { x: zone.x, y: zone.y, w: zone.w, h: zone.h }, sx, sy, perspective, now);
+      if (includePit) drawPit(context, { x: zone.x, y: zone.y, w: zone.w, h: zone.h }, sx, sy, perspective, now);
       if (zone.kind === "tiles") {
         for (const tile of getTileRects(zone)) {
           const { collapsed, warning } = tileState(tile.index, time);
