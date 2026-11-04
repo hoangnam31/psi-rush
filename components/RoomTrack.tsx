@@ -110,7 +110,7 @@ function MapFeatures({ mapId, round, roundSeconds, playerCount }: { mapId: strin
   </div>;
   if (mapId === "ice") return <div className="admin-ice-course" aria-hidden="true">
     {[20, 36, 53, 70, 86].map((bottom, index) => <i className={index % 2 ? "right" : "left"} style={{ bottom: `${bottom}%` }} key={bottom}><b/></i>)}
-    {[30, 67].map((bottom, pitIndex) => <span className="admin-ice-pit" style={{bottom:`${bottom}%`}} key={bottom}>{[0,1,2,3].map(index=><b style={{top:`${5 + index * 23}%`,animationDelay:`${index * -.7}s`,animationDuration:`${pitIndex ? 1.8 : 3.4}s`}} key={index}/>)}</span>)}
+    {[30, 67].map((bottom, pitIndex) => <span className="admin-ice-pit" style={{bottom:`${bottom}%`}} key={bottom}>{[0,1,2,3].map(index=><b style={{top:`${4 + index * 24}%`,animationDelay:`${index * -.18}s`,animationDuration:`${pitIndex ? 2.4 : 4.2}s`}} key={index}/>)}</span>)}
   </div>;
   return <>{[18, 34, 51, 68, 84].map((position, index) => <div className={`track-obstacle o${index % 3}`} style={{ bottom: `${position}%` }} key={position}><i/><i/><i/></div>)}</>;
 }

@@ -20,7 +20,7 @@ type Props = {
 type Obstacle = {
   x: number; y: number; w: number; h: number;
   kind: "block" | "pad" | "bumper" | "mover";
-  color: string; amp?: number; speed?: number; phase?: number; low?: boolean;
+  color: string; amp?: number; speed?: number; phase?: number; low?: boolean; icePlatform?: boolean;
 };
 type Spinner = { x: number; y: number; len: number; speed: number; phase: number; color: string };
 type Pit = { x: number; y: number; w: number; h: number };
@@ -45,6 +45,7 @@ const PIT_LENGTH = 180;
 const FINISH_CLEARANCE = 650;
 const SURVIVAL_Y = 3900;
 const EDGE_SUPPORT = PLAYER_R * .68;
+const ICE_BRIDGE_SUPPORT = PLAYER_R * .92;
 
 function mapSeed(id: string) {
   return [...id].reduce((sum, char) => sum + char.charCodeAt(0), 0);
@@ -144,14 +145,23 @@ function buildCourse(id: string, courseWidth: number, playerCount: number) {
     );
   }
   if (id === "ice") {
+    // A gentle introduction before the first random obstacle group so the
+    // opening stretch is readable without feeling empty.
+    obstacles.push(
+      { x: 70, y: 540, w: courseWidth * .24, h: 94, kind: "block", color: "#d8f9ff" },
+      { x: courseWidth * .72, y: 540, w: courseWidth * .28 - 70, h: 94, kind: "block", color: "#71dfff" },
+      { x: courseWidth / 2 - 145, y: 870, w: 290, h: 96, kind: "mover", color: "#7ce9ff", amp: Math.min(310, courseWidth * .2), speed: .42, phase: .4 },
+      { x: courseWidth * .18, y: 1160, w: 96, h: 96, kind: "bumper", color: "#f1fdff", phase: 0 },
+      { x: courseWidth * .76, y: 1160, w: 96, h: 96, kind: "bumper", color: "#d8f9ff", phase: 1 },
+    );
     [3000, 6500].forEach((y, pitIndex) => {
       const pit = { x: 70, y, w: courseWidth - 140, h: 900 };
       pits.push(pit); bridgePits.push(pit);
       for (let row = 0; row < 4; row++) bridges.push({
-        x: courseWidth / 2 - 170, y: y + 35 + row * 220, w: 340, h: 140,
-        amp: Math.min(pitIndex ? 720 : 520, courseWidth / 2 - 260),
-        speed: (row % 2 ? -1 : 1) * (pitIndex ? 1 + row * .18 : .48 + row * .08),
-        phase: pitIndex * 1.7 + row * 1.35,
+        x: courseWidth / 2 - 180, y: y + 30 + row * 220, w: 360, h: 145,
+        amp: Math.min(pitIndex ? 480 : 350, courseWidth / 2 - 280),
+        speed: pitIndex ? .76 : .42,
+        phase: pitIndex * .55 + row * .2,
         color: row % 2 ? "#7ce9ff" : "#f1fdff",
       });
     });
@@ -418,7 +428,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
     }
 
     function getSupportingBridge(time: number) {
-      return bridges.find((bridge) => circleTouchesRect(p.x, p.y, EDGE_SUPPORT, { ...bridge, x: bridgeX(bridge, time) })) ?? null;
+      return bridges.find((bridge) => circleTouchesRect(p.x, p.y, ICE_BRIDGE_SUPPORT, { ...bridge, x: bridgeX(bridge, time) })) ?? null;
     }
 
     function getPitAtPlayer(time: number) {
@@ -819,7 +829,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       for (const bridge of bridges) {
         const y = sy(bridge.y);
         if (y < -180 || y > h + 180) continue;
-        drawBox(ctx, { ...bridge, kind: "block" }, bridgeX(bridge, raceSeconds), sx, sy, perspective);
+        drawBox(ctx, { ...bridge, kind: "block", icePlatform: true }, bridgeX(bridge, raceSeconds), sx, sy, perspective);
       }
 
       const sortedObstacles = [...obstacles].sort((a, b) => b.y - a.y);
@@ -1106,7 +1116,9 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       const left = sx(obstacleX, obstacle.y), right = sx(obstacleX + obstacle.w, obstacle.y);
       const nearY = sy(obstacle.y), farY = sy(obstacle.y + obstacle.h);
       const highSweepWall = map.id === "sweep" && obstacle.kind === "mover" && obstacle.low === false;
-      const rise = obstacle.low
+      const rise = obstacle.icePlatform
+        ? Math.max(12, 25 * renderScale)
+        : obstacle.low
         ? Math.max(10, 18 * renderScale)
         : highSweepWall
           ? Math.max(42, 160 * renderScale)
@@ -1123,6 +1135,22 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       context.strokeStyle = "rgba(255,255,255,.72)"; context.lineWidth = Math.max(2, 3 * renderScale);
       context.strokeRect(left, farY - rise, Math.max(0, right - left), Math.max(0, nearY - farY));
       context.fillStyle = "rgba(255,255,255,.38)"; context.fillRect(left + 10 * scale, nearY - rise + 8 * scale, Math.max(0, right - left - 20 * scale), 6 * scale);
+      if (obstacle.icePlatform) {
+        context.save();
+        context.lineJoin = "round";
+        context.strokeStyle = "#ffffff";
+        context.lineWidth = Math.max(3, 7 * renderScale);
+        context.shadowColor = "#35dcff";
+        context.shadowBlur = 9;
+        context.beginPath();
+        context.moveTo(left, nearY - rise);
+        context.lineTo(right, nearY - rise);
+        context.lineTo(right, farY - rise);
+        context.lineTo(left, farY - rise);
+        context.closePath();
+        context.stroke();
+        context.restore();
+      }
       if (highSweepWall) {
         context.save();
         context.globalAlpha = .42;
