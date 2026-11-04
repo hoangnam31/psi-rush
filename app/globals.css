@@ -24,7 +24,7 @@
 /* PSI Rush branding, mobile interaction and per-map spectator previews */
 .product-credit{position:fixed;z-index:100;right:9px;bottom:7px;padding:5px 8px;border:1px solid #ffffff1c;border-radius:7px;background:#10062db8;color:#ffffff9e;font-size:8px;font-weight:900;letter-spacing:.06em;pointer-events:none;backdrop-filter:blur(7px)}
 .race-game,.race-game canvas,.touch-controls,.touch-controls *{touch-action:none}
-.admin-map-sky .track-lane,.admin-map-lava .track-lane{background:#10072a;box-shadow:inset 14px 0 0 #ffffff0b,inset -14px 0 0 #00000025}
+.admin-map-sky .track-lane,.admin-map-lava .track-lane,.admin-map-sweep .track-lane{background:#10072a;box-shadow:inset 14px 0 0 #ffffff0b,inset -14px 0 0 #00000025}
 .admin-ring-course,.admin-tile-course,.admin-arena-course,.admin-ice-course{position:absolute;inset:0;z-index:1}
 .admin-ring-course>i{position:absolute;width:44%;aspect-ratio:1;border:5px solid #ffffffc9;border-radius:50%;background:radial-gradient(circle at 35% 28%,#d8f9ff,#4a8fec 55%,#26347e);box-shadow:0 7px 0 #111942,0 0 18px #35dcff66}
 .admin-tile-grid{position:absolute;left:5%;width:90%;height:18%;display:grid;grid-template-columns:repeat(4,1fr);grid-template-rows:repeat(3,1fr);gap:4px}
@@ -64,3 +64,11 @@
   .player-result .bean-wrap.has-crown{margin-top:60px}.player-result .bean-wrap.has-crown .bean-name{top:-69px}.player-result .bean-wrap.has-crown .bean-crown{top:-34px}
   .results-hero .podium{margin-top:34px;margin-bottom:12px}.results-hero .result-actions{margin-top:44px}
 }
+
+/* Live admin previews for the expanded PSI RUSH map set. */
+.admin-ring-course>i{animation:admin-ring-drift 3s ease-in-out infinite alternate}.admin-ring-course>.track-obstacle{height:13px;box-shadow:0 4px 0 #150532;background:linear-gradient(90deg,#ff3d9a,#ffe14a,#35dcff)}
+@keyframes admin-ring-drift{to{translate:18% 0;rotate:28deg}}
+.admin-arena.laser{overflow:hidden;background:radial-gradient(circle,#bb334d,#6b182d 68%,#250919)}.admin-arena.laser>b{position:absolute;z-index:2;border-radius:99px;background:#ff376f;box-shadow:0 0 11px #ff376f,0 0 20px #fff;animation:admin-laser-y 4s linear infinite}.admin-arena.laser>b.horizontal{left:4%;top:0;width:92%;height:7px}.admin-arena.laser>b.vertical{left:0;top:4%;width:7px;height:92%;animation-name:admin-laser-x}
+.admin-sweep-course{position:absolute;inset:0;display:grid;place-items:center}.admin-sweep-platform{position:relative;width:88%;aspect-ratio:1;border:5px solid #ff56a9;border-radius:8px;background:linear-gradient(135deg,#332079,#6c4cff);overflow:hidden;box-shadow:0 0 22px #ff56a955}.admin-sweep-platform>b{position:absolute;border-radius:4px;background:linear-gradient(#ffcf4d,#ff4fa3);box-shadow:0 0 10px #ff56a9;animation:admin-sweep-y 4.5s linear infinite}.admin-sweep-platform>b.horizontal{left:0;top:-9%;width:100%;height:9%}.admin-sweep-platform>b.vertical{left:-9%;top:0;width:9%;height:100%;animation-name:admin-sweep-x}
+@keyframes admin-laser-y{to{translate:0 1120%}}@keyframes admin-laser-x{to{translate:1120% 0}}@keyframes admin-sweep-y{to{translate:0 1220%}}@keyframes admin-sweep-x{to{translate:1220% 0}}
+.admin-ice-pit{position:absolute;left:4%;width:92%;height:11%;overflow:hidden;border:3px solid #b77cff;border-radius:6px;background:#100621;box-shadow:inset 0 0 15px #8e50ff88}.admin-ice-pit>b{position:absolute;top:16%;width:27%;height:68%;border:2px solid #fff;border-radius:5px;background:#7ce9ff;animation:admin-ice-bridge 2.6s ease-in-out infinite alternate}.admin-ice-pit>b:nth-child(2){animation-direction:alternate-reverse}.admin-ice-pit>b:nth-child(3){animation-delay:-1.4s}@keyframes admin-ice-bridge{from{left:2%}to{left:71%}}

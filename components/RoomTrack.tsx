@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { MAPS } from "../lib/game";
+import { courseWidthForPlayers, MAPS } from "../lib/game";
 import { TILE_COUNT, tileCollapseState } from "../lib/tile-collapse";
 import type { Player } from "../lib/types";
 
@@ -12,6 +12,7 @@ function stableLane(id: string) {
 
 export function RoomTrack({ players, mapId, round, startedAt }: { players: Player[]; mapId: string | null; round: number; startedAt: string }) {
   const map = MAPS.find((item) => item.id === mapId) ?? MAPS[0];
+  const courseWidth = courseWidthForPlayers(players.length);
   const [roundSeconds, setRoundSeconds] = useState(0);
   const targets = useRef(new Map<string, { progress: number; lane: number }>());
   const displayed = useRef(new Map<string, { progress: number; lane: number }>());
@@ -21,7 +22,7 @@ export function RoomTrack({ players, mapId, round, startedAt }: { players: Playe
     const active = new Set<string>();
     for (const player of players) {
       active.add(player.id);
-      const lane = Number.isFinite(player.positionX) ? 8 + Math.max(0, Math.min(1600, player.positionX)) / 1600 * 84 : stableLane(player.id);
+      const lane = Number.isFinite(player.positionX) ? 8 + Math.max(0, Math.min(courseWidth, player.positionX)) / courseWidth * 84 : stableLane(player.id);
       const fallbackSurvivalProgress = 32 + stableLane(`${player.id}:y`) * .42;
       const target = { progress: Math.min(100, Math.max(0, map.mode === "survival" && player.progress < 1 ? fallbackSurvivalProgress : player.progress)), lane };
       targets.current.set(player.id, target);
@@ -30,7 +31,7 @@ export function RoomTrack({ players, mapId, round, startedAt }: { players: Playe
     for (const id of targets.current.keys()) {
       if (!active.has(id)) { targets.current.delete(id); displayed.current.delete(id); nodes.current.delete(id); }
     }
-  }, [players, map.mode]);
+  }, [players, map.mode, courseWidth]);
 
   useEffect(() => {
     let frame = 0;
@@ -69,7 +70,7 @@ export function RoomTrack({ players, mapId, round, startedAt }: { players: Playe
     <div className="track-cloud c1"/><div className="track-cloud c2"/>
     <div className="track-lane">
       {map.mode === "race"&&<div className="finish-line"><b>FINISH</b></div>}
-      <MapFeatures mapId={map.id} round={round} roundSeconds={roundSeconds}/>
+      <MapFeatures mapId={map.id} round={round} roundSeconds={roundSeconds} playerCount={players.length}/>
       {players.map((player) => <div
         className={`track-runner ${player.finishPosition?"eliminated":""}`}
         key={player.id}
@@ -85,9 +86,10 @@ export function RoomTrack({ players, mapId, round, startedAt }: { players: Playe
   </div>;
 }
 
-function MapFeatures({ mapId, round, roundSeconds }: { mapId: string; round: number; roundSeconds: number }) {
+function MapFeatures({ mapId, round, roundSeconds, playerCount }: { mapId: string; round: number; roundSeconds: number; playerCount: number }) {
   if (mapId === "sky") return <div className="admin-ring-course" aria-hidden="true">
-    {[18, 35, 52, 69, 86].map((bottom, index) => <i key={bottom} style={{ bottom: `${bottom}%`, left: `${index % 2 ? 48 : 8}%` }}/>) }
+    {[14, 38, 62, 86].map((bottom, index) => <i key={bottom} style={{ bottom: `${bottom}%`, left: `${index % 2 ? 48 : 8}%`, animationDuration: `${2.4 + index * .55}s` }}/>) }
+    {[27, 51, 75].map((bottom, index) => <span className={`track-obstacle o${index % 2}`} style={{ bottom: `${bottom}%` }} key={bottom}><b/><b/><b/></span>)}
   </div>;
   if (mapId === "jungle") return <div className="admin-tile-course" aria-hidden="true">
     <div className="admin-survival-frame">{Array.from({ length: TILE_COUNT }, (_, index) => {
@@ -95,11 +97,20 @@ function MapFeatures({ mapId, round, roundSeconds }: { mapId: string; round: num
       return <i className={state.collapsed ? "collapsed" : state.warning ? "warning" : ""} key={index}/>;
     })}</div>
   </div>;
+  if (mapId === "sweep") {
+    const count = 1 + Math.min(2, Math.floor(roundSeconds / 22));
+    return <div className="admin-sweep-course" aria-hidden="true"><i className="admin-sweep-platform" style={{ transform: `scale(${Math.min(1, .72 + playerCount / 500)})` }}>
+      {Array.from({length: count}, (_, index) => <b className={index % 2 ? "vertical" : "horizontal"} style={{ animationDuration: `${Math.max(1.8, 4.8 - roundSeconds * .025 + index * .35)}s` }} key={index}/>) }
+    </i></div>;
+  }
   if (mapId === "lava") return <div className="admin-arena-course" aria-hidden="true">
-    <i className="admin-arena survival" style={{ bottom: "25%" }}><b/></i>
+    <i className="admin-arena survival laser" style={{ bottom: "25%", transform: `scale(${Math.min(1, .72 + playerCount / 500)})` }}>
+      {Array.from({length: 1 + Math.min(2, Math.floor(roundSeconds / 22))}, (_, index) => <b className={roundSeconds > 24 && index % 2 ? "vertical" : "horizontal"} style={{ animationDuration: `${Math.max(1.9, 4.8 - roundSeconds * .03 + index * .4)}s` }} key={index}/>) }
+    </i>
   </div>;
   if (mapId === "ice") return <div className="admin-ice-course" aria-hidden="true">
     {[20, 36, 53, 70, 86].map((bottom, index) => <i className={index % 2 ? "right" : "left"} style={{ bottom: `${bottom}%` }} key={bottom}><b/></i>)}
+    {[30, 67].map((bottom) => <span className="admin-ice-pit" style={{bottom:`${bottom}%`}} key={bottom}>{[0,1,2].map(index=><b style={{animationDelay:`${index * -.7}s`}} key={index}/>)}</span>)}
   </div>;
   return <>{[18, 34, 51, 68, 84].map((position, index) => <div className={`track-obstacle o${index % 3}`} style={{ bottom: `${position}%` }} key={position}><i/><i/><i/></div>)}</>;
 }

@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { getDb } from "../../../../db";
 import { players, rooms, roundResults } from "../../../../db/schema";
-import { getMapMode, pickMap, scoreForPosition } from "../../../../lib/game";
+import { courseWidthForPlayers, getMapMode, pickMap, scoreForPosition } from "../../../../lib/game";
 
 type Context = { params: Promise<{ code: string }> };
 
@@ -59,7 +59,8 @@ export async function POST(request: Request, context: Context) {
         if (nextRound > room.totalRounds) {
           await db.update(rooms).set({ status: "finished", updatedAt: sql`CURRENT_TIMESTAMP` }).where(eq(rooms.id, room.id));
         } else {
-          await db.update(players).set({ progress: 0, positionX: 800, finishPosition: null }).where(eq(players.roomId, room.id));
+          const playerCount = (await db.select({ count: sql<number>`count(*)` }).from(players).where(eq(players.roomId, room.id)))[0]?.count ?? 1;
+          await db.update(players).set({ progress: 0, positionX: Math.round(courseWidthForPlayers(playerCount) / 2), finishPosition: null }).where(eq(players.roomId, room.id));
           await db.update(rooms).set({ status: "racing", currentRound: nextRound, currentMap: pickMap(pool, room.currentMap), updatedAt: sql`CURRENT_TIMESTAMP` }).where(eq(rooms.id, room.id));
         }
       } else if (action === "endRound") {
@@ -93,7 +94,7 @@ export async function POST(request: Request, context: Context) {
       await db.update(players).set({ isReady: Boolean(body.ready), lastSeenAt: sql`CURRENT_TIMESTAMP` }).where(eq(players.id, player.id));
     } else if (action === "progress") {
       const progress = Math.max(0, Math.min(99.8, Number(body.progress) || 0));
-      const positionX = Math.max(-80, Math.min(1680, Number(body.positionX) || 800));
+      const positionX = Math.max(-120, Math.min(3120, Number(body.positionX) || 800));
       await db.update(players).set({ progress, positionX, lastSeenAt: sql`CURRENT_TIMESTAMP` }).where(eq(players.id, player.id));
     } else if (action === "finish") {
       const existing = (await db.select().from(roundResults).where(and(eq(roundResults.roomId, room.id), eq(roundResults.roundNumber, room.currentRound), eq(roundResults.playerId, player.id))).limit(1))[0];
