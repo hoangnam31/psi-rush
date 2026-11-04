@@ -22,7 +22,6 @@
 .join-box>div{display:grid;grid-template-columns:minmax(0,1fr) 82px;width:100%}.join-box input{width:100%;min-width:0;padding:0 12px;font-size:14px}.join-box button{width:82px;min-width:82px;padding:0 10px;white-space:nowrap}.mana-hud .mana-label{display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0}.mana-hud .mana-label span{display:flex;align-items:center;justify-content:flex-start;gap:6px;min-width:0;white-space:nowrap}.mana-hud .mana-label em{position:static;flex:0 0 auto;color:#fff;font-size:9px;font-style:normal;font-weight:1000}.race-actions{position:absolute;z-index:6;left:auto;right:416px;bottom:27px;display:flex;align-items:center;gap:10px;pointer-events:none}.race-actions button{pointer-events:auto}.race-actions .danger-action{position:static;box-shadow:0 6px 0 #8f174e;background:#ff3d9a;color:#fff}
 
 /* PSI Rush branding, mobile interaction and per-map spectator previews */
-.product-credit{position:fixed;z-index:100;right:9px;bottom:7px;padding:5px 8px;border:1px solid #ffffff1c;border-radius:7px;background:#10062db8;color:#ffffff9e;font-size:8px;font-weight:900;letter-spacing:.06em;pointer-events:none;backdrop-filter:blur(7px)}
 .race-game,.race-game canvas,.touch-controls,.touch-controls *{touch-action:none}
 .admin-map-sky .track-lane,.admin-map-lava .track-lane,.admin-map-sweep .track-lane{background:#10072a;box-shadow:inset 14px 0 0 #ffffff0b,inset -14px 0 0 #00000025}
 .admin-ring-course,.admin-tile-course,.admin-arena-course,.admin-ice-course{position:absolute;inset:0;z-index:1}
@@ -56,7 +55,6 @@
 @media(max-width:650px){
   .touch-controls{bottom:calc(42px + env(safe-area-inset-bottom,0px));z-index:20}
   .mana-hud{bottom:calc(128px + env(safe-area-inset-bottom,0px))}
-  .product-credit{bottom:calc(7px + env(safe-area-inset-bottom,0px))}
   .player-result section{padding:20px 20px calc(42px + env(safe-area-inset-bottom,0px))}
   .player-result section>p{margin-top:30px;line-height:1.7}
   .sound-toggle{right:15px;top:66px;min-width:38px;width:38px;height:38px;padding:0;border-radius:50%}.sound-toggle span{display:none}

@@ -26,7 +26,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="vi">
-      <body className="antialiased"><ZoomGuard/>{children}<div className="product-credit">Sản phẩm của NamVH7</div></body>
+      <body className="antialiased"><ZoomGuard/>{children}</body>
     </html>
   );
 }
