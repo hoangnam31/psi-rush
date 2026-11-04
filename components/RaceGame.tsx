@@ -46,6 +46,7 @@ const FINISH_CLEARANCE = 650;
 const SURVIVAL_Y = 3900;
 const EDGE_SUPPORT = PLAYER_R * .68;
 const ICE_BRIDGE_SUPPORT = PLAYER_R * .92;
+const CAMERA_FOLLOW_SPEED = 13;
 
 function mapSeed(id: string) {
   return [...id].reduce((sum, char) => sum + char.charCodeAt(0), 0);
@@ -243,8 +244,8 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       return { x: courseWidth / 2, y: 80 };
     }
     const spawn = spawnFor(me.id);
-    let cameraX = isSurvival && survivalZone ? survivalZone.x + survivalZone.w / 2 : spawn.x;
-    let cameraY = isSurvival && survivalZone ? survivalZone.y + survivalZone.h / 2 : spawn.y;
+    let cameraX = spawn.x;
+    let cameraY = spawn.y;
     let finished = false;
     let eliminationSent = false;
     const normalizedStartedAt = startedAt.includes("T") ? startedAt : `${startedAt.replace(" ", "T")}Z`;
@@ -623,7 +624,6 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
         p.fallTime += dt;
         p.x += p.vx * dt; p.y += p.vy * dt;
         p.z -= (260 + p.fallTime * 520) * dt;
-        if (!isSurvival) { cameraX = p.x; cameraY = p.y; }
         if (p.fallTime >= 1.05) {
           if (isSurvival) {
             if (!eliminationSent) { eliminationSent = true; finished = true; eliminateCb.current(Math.max(0, Date.now() - roundGoEpoch)); }
@@ -748,11 +748,12 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
                 : null;
           if (edgePit || activePit) beginFall(now, activePit ?? edgePit, Boolean(edgePit));
         }
-        if (isSurvival && survivalZone) { cameraX = survivalZone.x + survivalZone.w / 2; cameraY = survivalZone.y + survivalZone.h / 2; }
-        else { cameraX = p.x; cameraY = p.y; }
       }
 
       if (![p.x, p.y, p.vx, p.vy, p.z, p.vz].every(Number.isFinite)) respawn(now);
+      const cameraFollow = 1 - Math.exp(-CAMERA_FOLLOW_SPEED * dt);
+      cameraX += (p.x - cameraX) * cameraFollow;
+      cameraY += (p.y - cameraY) * cameraFollow;
 
       for (const particle of particles) {
         particle.x += particle.vx * dt; particle.y += particle.vy * dt;
@@ -778,10 +779,13 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
     function draw(now: number) {
       const rect = canvas!.getBoundingClientRect();
       const w = rect.width, h = rect.height;
-      const survivalFit = survivalZone ? Math.min(w / (survivalZone.w + 220), h / (survivalZone.h + 260)) * .9 : .4;
-      const baseScale = isSurvival ? Math.max(.18, Math.min(.55, survivalFit)) : Math.max(.36, Math.min(.78, w / (courseWidth + 200)));
+      const survivalFit = survivalZone ? Math.min(w / (survivalZone.w + 220), h / (survivalZone.h + 260)) : .4;
+      const raceFit = w / (courseWidth + 160);
+      const baseScale = isSurvival
+        ? Math.max(.24, Math.min(.68, survivalFit * 1.05))
+        : Math.max(.42, Math.min(.9, raceFit * 1.08));
       renderScale = baseScale;
-      const playerScreenY = isSurvival ? h * .5 : h * .73;
+      const playerScreenY = isSurvival ? h * .52 : h * .72;
       const raceSeconds = Math.max(0, (Date.now() - roundGoEpoch) / 1000);
       const sy = (worldY: number) => playerScreenY - (worldY - cameraY) * baseScale;
       const perspective = (_worldY: number) => 1;
