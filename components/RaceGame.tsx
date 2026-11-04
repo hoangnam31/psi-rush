@@ -654,12 +654,21 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
         input.current.dash = false;
         if (now - p.lastJump > 900 && p.mana < 100) p.mana = Math.min(100, p.mana + 8.5 * dt);
 
-        const control = p.stun > 0 ? .1 : 1;
+        // Block Storm obstacles should push the bean without taking control
+        // away. Keep enough steering authority to slide across the push
+        // direction while preserving the collision's momentum.
+        const control = p.stun > 0 ? (map.id === "sweep" ? .7 : .1) : 1;
         const acceleration = 1280 * control;
         const maxSpeed = p.dashTime > 0 ? 850 : (map.id === "ice" ? 420 : 365);
         p.vx += ix * acceleration * dt;
         p.vy += iy * acceleration * dt;
-        const friction = Math.pow(map.id === "ice" ? .34 : .055, dt);
+        // Apply stronger braking only after the stick/key is released. Active
+        // steering and boost retain their momentum, while idle coasting ends
+        // sooner on every map (Ice Drift remains intentionally more slippery).
+        const hasMoveInput = inputLength > .08;
+        const activeFriction = map.id === "ice" ? .34 : .055;
+        const idleFriction = map.id === "ice" ? .1 : .015;
+        const friction = Math.pow(hasMoveInput || p.dashTime > 0 ? activeFriction : idleFriction, dt);
         p.vx *= friction; p.vy *= friction;
         const speed = Math.hypot(p.vx, p.vy);
         if (speed > maxSpeed) { p.vx = p.vx / speed * maxSpeed; p.vy = p.vy / speed * maxSpeed; }
