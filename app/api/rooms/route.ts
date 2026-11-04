@@ -18,7 +18,7 @@ export async function POST(request: Request) {
       id: crypto.randomUUID(), code: makeCode(), hostToken: crypto.randomUUID(),
       title: (body.title || "PSI Rush Cup").trim().slice(0, 40),
       maxPlayers: Math.max(2, Math.min(200, Number(body.maxPlayers) || 50)),
-      totalRounds: Math.max(1, Math.min(7, Number(body.totalRounds) || 3)),
+      totalRounds: Math.max(1, Math.min(MAPS.length, Number(body.totalRounds) || Math.min(3, MAPS.length))),
       mapPool: JSON.stringify(mapPool.length ? mapPool : MAPS.map((m) => m.id)),
     };
     const db = getDb();

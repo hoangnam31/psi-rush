@@ -7,13 +7,15 @@ import { COLORS, getMapMode, MAPS } from "../../lib/game";
 import { getRoomState, roomAction, type RoomState } from "../../lib/types";
 
 type HostSession = { code: string; hostToken: string };
+const ROUND_OPTIONS = Array.from({ length: MAPS.length }, (_, index) => index + 1);
+const DEFAULT_ROUNDS = Math.min(3, MAPS.length);
 
 export default function HostPage() {
   const [session, setSession] = useState<HostSession | null>(null);
   const [state, setState] = useState<RoomState | null>(null);
   const [error, setError] = useState(""); const [busy, setBusy] = useState(false);
   const [title, setTitle] = useState("PSI Rush Cup"); const [maxPlayers, setMaxPlayers] = useState(50);
-  const [rounds, setRounds] = useState(3); const [maps, setMaps] = useState<string[]>(MAPS.map(m=>m.id));
+  const [rounds, setRounds] = useState(DEFAULT_ROUNDS); const [maps, setMaps] = useState<string[]>(MAPS.map(m=>m.id));
 
   useEffect(()=>{
     const params=new URLSearchParams(location.search);
@@ -45,7 +47,7 @@ export default function HostPage() {
       <div className="setup-intro"><span className="eyebrow">TẠO GIẢI ĐẤU MỚI</span><h1>CHỌN LUẬT<br/><em>CHO CUỘC CHƠI</em></h1><p>Host điều khiển toàn bộ trận đấu, chọn số round và theo dõi mọi người theo thời gian thực.</p></div>
       <div className="setup-form">
         <label>TÊN GIẢI ĐẤU<input value={title} onChange={e=>setTitle(e.target.value)} maxLength={40}/></label>
-        <div className="form-pair"><label>SỐ ROUND<select value={rounds} onChange={e=>setRounds(+e.target.value)}>{[1,2,3,4,5,6,7].map(n=><option key={n} value={n}>{n} round</option>)}</select></label><label>TỐI ĐA<select value={maxPlayers} onChange={e=>setMaxPlayers(+e.target.value)}>{[20,50,100,150,200].map(n=><option key={n} value={n}>{n} người</option>)}</select></label></div>
+        <div className="form-pair"><label>SỐ ROUND<select value={rounds} onChange={e=>setRounds(+e.target.value)}>{ROUND_OPTIONS.map(n=><option key={n} value={n}>{n} round</option>)}</select></label><label>TỐI ĐA<select value={maxPlayers} onChange={e=>setMaxPlayers(+e.target.value)}>{[20,50,100,150,200].map(n=><option key={n} value={n}>{n} người</option>)}</select></label></div>
         <label className="maps-label">MAP POOL <small>Chọn ít nhất 1 map</small></label>
         <div className="map-picker">{MAPS.map((m,i)=><button key={m.id} className={maps.includes(m.id)?"selected":""} style={{"--map":m.floor,"--accent":m.accent} as React.CSSProperties} onClick={()=>setMaps(v=>v.includes(m.id)?(v.length>1?v.filter(x=>x!==m.id):v):[...v,m.id])}><i>{maps.includes(m.id)?"✓":""}</i><b>{m.name}</b><small>{m.subtitle}</small><span>0{i+1}</span></button>)}</div>
         {error&&<p className="form-error">{error}</p>}<button className="primary-action" disabled={busy||!maps.length} onClick={createRoom}>{busy?"ĐANG TẠO...":"TẠO PHÒNG →"}</button>
