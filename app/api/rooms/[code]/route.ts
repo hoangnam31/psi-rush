@@ -10,22 +10,47 @@ async function getRoom(code: string) {
   return (await db.select().from(rooms).where(eq(rooms.code, code.toUpperCase())).limit(1))[0];
 }
 
+type RoomRow = NonNullable<Awaited<ReturnType<typeof getRoom>>>;
+
+async function getRoomPayload(room: RoomRow, isHost: boolean, includeResults = true) {
+  const db = getDb();
+  const roster = await db.select({
+    id: players.id, name: players.name, color: players.color, score: players.score,
+    progress: players.progress, positionX: players.positionX, finishPosition: players.finishPosition,
+    isReady: players.isReady,
+  }).from(players).where(eq(players.roomId, room.id)).orderBy(desc(players.score), desc(players.progress));
+  const results = includeResults
+    ? await db.select().from(roundResults).where(eq(roundResults.roomId, room.id)).orderBy(desc(roundResults.roundNumber), asc(roundResults.position))
+    : [];
+  return {
+    room: { ...room, hostToken: undefined, mapPool: JSON.parse(room.mapPool), isHost },
+    players: roster,
+    results,
+  };
+}
+
+async function getLivePayload(room: RoomRow) {
+  const db = getDb();
+  const roster = await db.select({
+    id: players.id, name: players.name, color: players.color, score: players.score,
+    progress: players.progress, positionX: players.positionX, finishPosition: players.finishPosition,
+    isReady: players.isReady,
+  }).from(players).where(eq(players.roomId, room.id)).orderBy(asc(players.name));
+  return {
+    room: {
+      status: room.status, currentRound: room.currentRound, currentMap: room.currentMap,
+      updatedAt: room.updatedAt,
+    },
+    players: roster,
+  };
+}
+
 export async function GET(request: Request, context: Context) {
   try {
     const { code } = await context.params; const room = await getRoom(code);
     if (!room) return Response.json({ error: "Không tìm thấy phòng" }, { status: 404 });
-    const db = getDb();
-    const roster = await db.select({
-      id: players.id, name: players.name, color: players.color, score: players.score,
-      progress: players.progress, positionX: players.positionX, finishPosition: players.finishPosition,
-      isReady: players.isReady, lastSeenAt: players.lastSeenAt,
-    }).from(players).where(eq(players.roomId, room.id)).orderBy(desc(players.score), desc(players.progress));
-    const results = await db.select().from(roundResults).where(eq(roundResults.roomId, room.id)).orderBy(desc(roundResults.roundNumber), asc(roundResults.position));
     const hostToken = new URL(request.url).searchParams.get("hostToken");
-    return Response.json({
-      room: { ...room, hostToken: undefined, mapPool: JSON.parse(room.mapPool), isHost: hostToken === room.hostToken },
-      players: roster, results,
-    });
+    return Response.json(await getRoomPayload(room, hostToken === room.hostToken, room.status !== "waiting"));
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Không thể tải phòng" }, { status: 500 });
   }
@@ -88,15 +113,26 @@ export async function POST(request: Request, context: Context) {
     }
 
     const playerId = String(body.playerId || ""), playerToken = String(body.playerToken || "");
-    const player = (await db.select().from(players).where(and(eq(players.id, playerId), eq(players.roomId, room.id), eq(players.token, playerToken))).limit(1))[0];
-    if (!player) return Response.json({ error: "Phiên người chơi không hợp lệ" }, { status: 403 });
-    if (action === "ready") {
-      await db.update(players).set({ isReady: Boolean(body.ready), lastSeenAt: sql`CURRENT_TIMESTAMP` }).where(eq(players.id, player.id));
-    } else if (action === "progress") {
+    if (action === "progress") {
       const progress = Math.max(0, Math.min(99.8, Number(body.progress) || 0));
       const positionX = Math.max(-120, Math.min(3120, Number(body.positionX) || 800));
-      await db.update(players).set({ progress, positionX, lastSeenAt: sql`CURRENT_TIMESTAMP` }).where(eq(players.id, player.id));
-    } else if (action === "finish") {
+      await db.update(players).set({ progress, positionX, lastSeenAt: sql`CURRENT_TIMESTAMP` }).where(and(
+        eq(players.id, playerId), eq(players.roomId, room.id), eq(players.token, playerToken),
+      ));
+      // Progress sync also returns the live roster. Players no longer need a
+      // separate full-room GET every 650 ms, which keeps 200-player rooms
+      // responsive while preserving the same interpolation data.
+      return Response.json(await getLivePayload(room));
+    }
+    if (action === "ready") {
+      await db.update(players).set({ isReady: Boolean(body.ready), lastSeenAt: sql`CURRENT_TIMESTAMP` }).where(and(
+        eq(players.id, playerId), eq(players.roomId, room.id), eq(players.token, playerToken),
+      ));
+      return Response.json({ ok: true });
+    }
+    const player = (await db.select().from(players).where(and(eq(players.id, playerId), eq(players.roomId, room.id), eq(players.token, playerToken))).limit(1))[0];
+    if (!player) return Response.json({ error: "Phiên người chơi không hợp lệ" }, { status: 403 });
+    if (action === "finish") {
       const existing = (await db.select().from(roundResults).where(and(eq(roundResults.roomId, room.id), eq(roundResults.roundNumber, room.currentRound), eq(roundResults.playerId, player.id))).limit(1))[0];
       if (!existing) {
         const count = (await db.select({ count: sql<number>`count(*)` }).from(roundResults).where(and(eq(roundResults.roomId, room.id), eq(roundResults.roundNumber, room.currentRound))))[0]?.count ?? 0;

@@ -1,6 +1,6 @@
 export type Player = {
   id: string; name: string; color: string; score: number; progress: number; positionX: number;
-  finishPosition: number | null; isReady: boolean; lastSeenAt: string;
+  finishPosition: number | null; isReady: boolean;
 };
 
 export type RoundResult = {
