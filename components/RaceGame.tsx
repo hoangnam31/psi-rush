@@ -71,7 +71,7 @@ function tileRectsForZone(zone: SpecialZone) {
 
 function buildCourse(id: string, courseWidth: number, playerCount: number) {
   const seed = mapSeed(id);
-  const colors = ["#ff3d9a", "#ffe14a", "#35dcff", "#b6f43b"];
+  const colors = ["#ef7165", "#f2b63f", "#58c6d8", "#8bc895"];
   const obstacles: Obstacle[] = [];
   const spinners: Spinner[] = [];
   const pits: Pit[] = [];
@@ -136,7 +136,7 @@ function buildCourse(id: string, courseWidth: number, playerCount: number) {
       kind: "bumper", color: colors[(zone + 2) % 4], phase: zone,
     });
     if (zone % 3 === 0) {
-      obstacles.push({ x: courseWidth / 2 - 120, y: y + 500, w: 240, h: 100, kind: "pad", color: "#b6f43b" });
+      obstacles.push({ x: courseWidth / 2 - 120, y: y + 500, w: 240, h: 100, kind: "pad", color: "#f2b63f" });
     }
     if (zone % 4 === 0) {
       const pitY = y + (zone % 3 === 0 ? 680 : 535);
@@ -929,7 +929,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       sx: (x: number, y: number) => number, sy: (y: number) => number, perspective: (y: number) => number,
     ) {
       const sky = context.createLinearGradient(0, 0, 0, h);
-      sky.addColorStop(0, map.sky); sky.addColorStop(.55, colorMix(map.sky, "#ffffff", .13)); sky.addColorStop(1, "#170a39");
+      sky.addColorStop(0, map.sky); sky.addColorStop(.55, colorMix(map.sky, "#fff8e9", .18)); sky.addColorStop(1, "#10203f");
       context.fillStyle = sky; context.fillRect(0, 0, w, h);
       drawScenery(context, w, h, now, cameraY, sx, sy, perspective);
       if (isSurvival) return;
@@ -954,7 +954,9 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       }
       context.globalAlpha = 1;
 
-      context.strokeStyle = map.accent; context.lineWidth = 13; context.lineCap = "round";
+      context.strokeStyle = "#14274e"; context.lineWidth = 24; context.lineCap = "round";
+      context.beginPath(); context.moveTo(topLeft, 0); context.lineTo(bottomLeft, h); context.moveTo(topRight, 0); context.lineTo(bottomRight, h); context.stroke();
+      context.strokeStyle = map.accent; context.lineWidth = 13;
       context.beginPath(); context.moveTo(topLeft, 0); context.lineTo(bottomLeft, h); context.moveTo(topRight, 0); context.lineTo(bottomRight, h); context.stroke();
       context.strokeStyle = "rgba(255,255,255,.35)"; context.lineWidth = 3;
       context.beginPath(); context.moveTo(topLeft + 8, 0); context.lineTo(bottomLeft + 8, h); context.moveTo(topRight - 8, 0); context.lineTo(bottomRight - 8, h); context.stroke();
@@ -983,10 +985,10 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       const y = sy(worldY); if (y < -50 || y > canvas!.getBoundingClientRect().height + 50) return;
       const left = sx(0, worldY), right = sx(courseWidth, worldY), height = Math.max(7, 17 * perspective(worldY));
       const gradient = context.createLinearGradient(left, 0, right, 0);
-      gradient.addColorStop(0, "#45f4ff"); gradient.addColorStop(.5, "#ffffff"); gradient.addColorStop(1, "#45f4ff");
+      gradient.addColorStop(0, "#55c6d8"); gradient.addColorStop(.5, "#fff4d6"); gradient.addColorStop(1, "#f2b63f");
       context.fillStyle = gradient; context.fillRect(left, y - height / 2, right - left, height);
-      context.font = `900 ${Math.max(8, 12 * perspective(worldY))}px system-ui`;
-      context.textAlign = "center"; context.fillStyle = "#ffffff"; context.strokeStyle = "#14234c"; context.lineWidth = 4;
+      context.font = `900 ${Math.max(8, 12 * perspective(worldY))}px 'Arial Rounded MT Bold',system-ui`;
+      context.textAlign = "center"; context.fillStyle = "#fff8e9"; context.strokeStyle = "#14274e"; context.lineWidth = 4;
       context.strokeText(`CHECKPOINT ${index}`, (left + right) / 2, y - height - 5);
       context.fillText(`CHECKPOINT ${index}`, (left + right) / 2, y - height - 5);
     }
@@ -1000,10 +1002,10 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       const y1 = sy(pit.y), y2 = sy(pit.y + pit.h);
       const glow = .34 + Math.sin(now * .004 + pit.y) * .08;
       context.save();
-      context.shadowColor = "#8e50ff"; context.shadowBlur = 18 * perspective(pit.y);
-      context.fillStyle = "#100621"; context.beginPath(); context.moveTo(x1, y1); context.lineTo(x2, y1); context.lineTo(x3, y2); context.lineTo(x4, y2); context.closePath(); context.fill();
-      context.shadowBlur = 0; context.strokeStyle = `rgba(190,130,255,${glow})`; context.lineWidth = Math.max(2, 7 * perspective(pit.y)); context.stroke();
-      context.fillStyle = "rgba(180,100,255,.17)";
+      context.shadowColor = "#55c6d8"; context.shadowBlur = 18 * perspective(pit.y);
+      context.fillStyle = "#09142b"; context.beginPath(); context.moveTo(x1, y1); context.lineTo(x2, y1); context.lineTo(x3, y2); context.lineTo(x4, y2); context.closePath(); context.fill();
+      context.shadowBlur = 0; context.strokeStyle = `rgba(85,198,216,${glow})`; context.lineWidth = Math.max(2, 7 * perspective(pit.y)); context.stroke();
+      context.fillStyle = "rgba(85,198,216,.14)";
       for (let i = 0; i < 3; i++) {
         const t = (i + 1) / 4, yy = y1 + (y2 - y1) * t;
         context.fillRect(x1 + (x4 - x1) * t + 10, yy, Math.max(0, (x2 + (x3 - x2) * t) - (x1 + (x4 - x1) * t) - 20), 3);
@@ -1023,11 +1025,11 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
           const left = sx(tile.x, tile.y), right = sx(tile.x + tile.w, tile.y);
           const nearY = sy(tile.y), farY = sy(tile.y + tile.h);
           context.save(); context.globalAlpha = collapsed ? .13 : 1;
-          context.fillStyle = collapsed ? "#2a1134" : warning ? "#ff5a67" : (tile.index % 2 ? "#60d98d" : "#a4f06b");
+          context.fillStyle = collapsed ? "#14243f" : warning ? "#ef7165" : (tile.index % 2 ? "#76b98c" : "#a8d3a0");
           context.fillRect(left, farY, right - left, nearY - farY);
           context.strokeStyle = collapsed ? "#a85bba" : "rgba(255,255,255,.7)"; context.lineWidth = Math.max(2, 4 * renderScale); context.strokeRect(left, farY, right - left, nearY - farY);
           if (warning && !collapsed) {
-            context.fillStyle = "rgba(255,255,255,.72)"; context.font = `900 ${Math.max(10, 18 * renderScale)}px system-ui`; context.textAlign = "center";
+            context.fillStyle = "rgba(255,248,233,.9)"; context.font = `900 ${Math.max(10, 18 * renderScale)}px 'Arial Rounded MT Bold',system-ui`; context.textAlign = "center";
             context.fillText("!", (left + right) / 2, (nearY + farY) / 2 + 6);
           }
           context.restore();
@@ -1045,7 +1047,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
           const x = sx(ring.x, ring.y), y = sy(ring.y), radius = ring.r * renderScale;
           context.fillStyle = "rgba(5,10,40,.45)"; context.beginPath(); context.arc(x + 8, y + 10, radius, 0, Math.PI * 2); context.fill();
           const gradient = context.createRadialGradient(x - radius * .25, y - radius * .3, 5, x, y, radius);
-          gradient.addColorStop(0, "#d8f9ff"); gradient.addColorStop(.46, index % 2 ? "#46bce8" : "#715df3"); gradient.addColorStop(1, "#253484");
+          gradient.addColorStop(0, "#fff7e5"); gradient.addColorStop(.46, index % 2 ? "#56bfd3" : "#6281be"); gradient.addColorStop(1, "#203766");
           context.fillStyle = gradient; context.beginPath(); context.arc(x, y, radius, 0, Math.PI * 2); context.fill();
           context.strokeStyle = index % 2 ? "#ffe14a" : "#ffffff"; context.lineWidth = Math.max(3, 9 * renderScale); context.stroke();
           context.save(); context.translate(x, y); context.rotate(time * ring.speed + ring.phase);
@@ -1061,7 +1063,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       } else if (zone.kind === "arena") {
         const cx = sx(zone.x + zone.w / 2, zone.y + zone.h / 2), cy = sy(zone.y + zone.h / 2), radius = Math.min(zone.w, zone.h) * .43 * renderScale;
         const gradient = context.createRadialGradient(cx - radius * .25, cy - radius * .3, 10, cx, cy, radius);
-        gradient.addColorStop(0, "#ffb13b"); gradient.addColorStop(.62, "#d44a32"); gradient.addColorStop(1, "#68152a");
+        gradient.addColorStop(0, "#ffd777"); gradient.addColorStop(.62, "#d36a58"); gradient.addColorStop(1, "#593348");
         context.fillStyle = "rgba(15,2,18,.5)"; context.beginPath(); context.arc(cx + 10, cy + 12, radius, 0, Math.PI * 2); context.fill();
         context.fillStyle = gradient; context.beginPath(); context.arc(cx, cy, radius, 0, Math.PI * 2); context.fill();
         context.strokeStyle = "#ffdd42"; context.lineWidth = Math.max(4, 11 * renderScale); context.stroke();
@@ -1071,9 +1073,9 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
         const left = sx(zone.x, zone.y), right = sx(zone.x + zone.w, zone.y);
         const top = sy(zone.y + zone.h), bottom = sy(zone.y);
         const gradient = context.createLinearGradient(left, top, right, bottom);
-        gradient.addColorStop(0, "#34227f"); gradient.addColorStop(.5, "#6c4cff"); gradient.addColorStop(1, "#271264");
+        gradient.addColorStop(0, "#263f73"); gradient.addColorStop(.5, "#526fab"); gradient.addColorStop(1, "#1c315d");
         context.fillStyle = gradient; context.fillRect(left, top, right - left, bottom - top);
-        context.strokeStyle = "#ff56a9"; context.lineWidth = Math.max(6, 16 * renderScale); context.strokeRect(left, top, right - left, bottom - top);
+        context.strokeStyle = "#f2b63f"; context.lineWidth = Math.max(6, 16 * renderScale); context.strokeRect(left, top, right - left, bottom - top);
         context.strokeStyle = "rgba(255,255,255,.13)"; context.lineWidth = 2;
         const cells = Math.max(8, Math.round(zone.w / 180));
         for (let index = 1; index < cells; index++) {
@@ -1145,11 +1147,11 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       const left = sx(0, worldY), right = sx(courseWidth, worldY), cells = 18, cellWidth = (right - left) / cells;
       const cellHeight = 34 * perspective(worldY);
       for (let row = 0; row < 2; row++) for (let column = 0; column < cells; column++) {
-        context.fillStyle = (row + column) % 2 ? "#ffffff" : "#1c0a3e";
+        context.fillStyle = (row + column) % 2 ? "#fff8e9" : "#14274e";
         context.fillRect(left + column * cellWidth, y + row * cellHeight, cellWidth + 1, cellHeight + 1);
       }
-      context.font = `900 ${Math.max(8, 13 * perspective(worldY))}px system-ui`;
-      context.textAlign = "center"; context.fillStyle = "#ffffff"; context.strokeStyle = "#17082f"; context.lineWidth = 4;
+      context.font = `900 ${Math.max(8, 13 * perspective(worldY))}px 'Arial Rounded MT Bold',system-ui`;
+      context.textAlign = "center"; context.fillStyle = "#fff8e9"; context.strokeStyle = "#14274e"; context.lineWidth = 4;
       context.strokeText(label, (left + right) / 2, y - 10); context.fillText(label, (left + right) / 2, y - 10);
     }
 
@@ -1211,9 +1213,8 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
         }
         context.restore();
       }
-      if (obstacle.kind === "mover") {
-        context.fillStyle = "#ffffff"; context.font = `900 ${Math.max(8, 17 * scale)}px system-ui`; context.textAlign = "center"; context.fillText("⇆", (left + right) / 2, nearY - rise * .35);
-      }
+      context.fillStyle = "rgba(255,248,233,.9)"; context.font = `900 ${Math.max(7, 13 * scale)}px 'Arial Rounded MT Bold',system-ui`; context.textAlign = "center";
+      context.fillText(obstacle.kind === "mover" ? "PSI  ⇆" : "PSI  ★", (left + right) / 2, nearY - rise * .35);
     }
 
     function drawLaser(
@@ -1271,7 +1272,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       context.strokeStyle = bar; context.lineWidth = 30 * scale; context.beginPath(); context.moveTo(x - dx, y - dy); context.lineTo(x + dx, y + dy); context.stroke();
       context.strokeStyle = "rgba(255,255,255,.38)"; context.lineWidth = 5 * scale; context.beginPath(); context.moveTo(x - dx, y - dy - 5 * scale); context.lineTo(x + dx, y + dy - 5 * scale); context.stroke();
       context.fillStyle = "#ffffff"; context.beginPath(); context.arc(x, y, 35 * scale, 0, Math.PI * 2); context.fill();
-      context.fillStyle = "#4a208d"; context.beginPath(); context.arc(x, y, 18 * scale, 0, Math.PI * 2); context.fill();
+      context.fillStyle = "#17305f"; context.beginPath(); context.arc(x, y, 18 * scale, 0, Math.PI * 2); context.fill();
     }
 
     function drawMascot(
@@ -1299,8 +1300,8 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       if (image?.complete && image.naturalWidth > 0) context.drawImage(image, left, top, width, height);
       else { context.fillStyle = definition.accent; context.fillRect(left, top, width, height); context.fillStyle = "#fff"; context.font = `900 ${radius * .6}px system-ui`; context.textAlign = "center"; context.fillText(definition.displayName.slice(0, 1), 0, radius * .15); }
       context.restore();
-      context.save(); context.globalAlpha = alpha; context.strokeStyle = isMe ? "#ffe14a" : "#ffffff"; context.lineWidth = Math.max(2, radius * .11); context.beginPath(); context.roundRect(x - width / 2, y + offsetY - height * .72, width, height, radius * .48); context.stroke(); context.restore();
-      context.globalAlpha = alpha; context.font = `900 ${Math.max(9, radius * .36)}px system-ui`; context.textAlign = "center"; context.strokeStyle = "#15062f"; context.lineWidth = 5; context.strokeText(name, x, y + offsetY - height * .86); context.fillStyle = isMe ? "#ffe14a" : "#ffffff"; context.fillText(name, x, y + offsetY - height * .86); context.globalAlpha = 1;
+      context.save(); context.globalAlpha = alpha; context.strokeStyle = isMe ? "#f2b63f" : "#fff8e9"; context.lineWidth = Math.max(2, radius * .11); context.beginPath(); context.roundRect(x - width / 2, y + offsetY - height * .72, width, height, radius * .48); context.stroke(); context.restore();
+      context.globalAlpha = alpha; context.font = `900 ${Math.max(9, radius * .36)}px 'Arial Rounded MT Bold',system-ui`; context.textAlign = "center"; context.strokeStyle = "#102044"; context.lineWidth = 5; context.strokeText(name, x, y + offsetY - height * .86); context.fillStyle = isMe ? "#ffd568" : "#fff8e9"; context.fillText(name, x, y + offsetY - height * .86); context.globalAlpha = 1;
     }
 
     function colorMix(color: string, mix: string, amount: number) {

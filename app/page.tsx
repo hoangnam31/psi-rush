@@ -14,14 +14,14 @@ export default function Home() {
     <header className="landing-nav"><WobbleLogo/><span className="internal-pill"><i/> INTERNAL PARTY GAME</span></header>
     <section className="landing-grid">
       <div className="landing-copy">
-        <span className="eyebrow">200 NGƯỜI · NHIỀU ROUND · 5 MAP</span>
-        <h1>VĂN PHÒNG<br/><em>ĐẠI HỖN CHIẾN!</em></h1>
-        <p>Tạo giải đấu nội bộ, mời mọi người quét mã và cùng lao vào những đường đua hỗn loạn. Một màn hình cho host. Một tay đua cho mỗi người.</p>
+        <span className="eyebrow">PSI MASCOT LEAGUE · 200 TAY ĐUA · 5 MAP</span>
+        <h1>BIỆT ĐỘI<br/><em>BỨT PHÁ!</em></h1>
+        <p>Chọn mascot PSI của bạn, lập đội hình nội bộ và cùng chinh phục chuỗi thử thách vui nhộn. Một màn hình cho host, một nhân vật riêng cho mỗi tay đua.</p>
         <div className="entry-actions">
           <button className="mega-btn host" onClick={createNewRoom}><span>＋</span><b>TẠO PHÒNG</b><small>Luôn tạo session mới</small></button>
           <div className="join-box"><label>THAM GIA BẰNG MÃ</label><div><input value={code} onChange={(e)=>setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,6))} placeholder="ABC123"/><button onClick={()=>router.push(`/join?room=${code}`)} disabled={code.length<6}>JOIN →</button></div></div>
         </div>
-        <div className="feature-strip"><span><b>01</b> QUÉT MÃ ĐỂ JOIN</span><span><b>02</b> ĐUA NHIỀU ROUND</span><span><b>03</b> TÍNH ĐIỂM TỔNG</span></div>
+        <div className="feature-strip"><span><b>01</b> CHỌN MASCOT</span><span><b>02</b> VƯỢT THỬ THÁCH</span><span><b>03</b> VINH DANH BIỆT ĐỘI</span></div>
       </div>
       <div className="landing-art" aria-hidden="true">
         <div className="hero-ring r1"/><div className="hero-ring r2"/><div className="hero-burst">GO!</div>

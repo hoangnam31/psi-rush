@@ -50,7 +50,7 @@ export default function HostPage() {
         <label>TÊN GIẢI ĐẤU<input value={title} onChange={e=>setTitle(e.target.value)} maxLength={40}/></label>
         <div className="form-pair"><label>SỐ ROUND<select value={rounds} onChange={e=>setRounds(+e.target.value)}>{ROUND_OPTIONS.map(n=><option key={n} value={n}>{n} round</option>)}</select></label><label>TỐI ĐA<select value={maxPlayers} onChange={e=>setMaxPlayers(+e.target.value)}>{[20,50,100,150,200].map(n=><option key={n} value={n}>{n} người</option>)}</select></label></div>
         <label className="maps-label">MAP POOL <small>Chọn ít nhất 1 map</small></label>
-        <div className="map-picker">{MAPS.map((m,i)=><button key={m.id} className={maps.includes(m.id)?"selected":""} style={{"--map":m.floor,"--accent":m.accent} as React.CSSProperties} onClick={()=>setMaps(v=>v.includes(m.id)?(v.length>1?v.filter(x=>x!==m.id):v):[...v,m.id])}><i>{maps.includes(m.id)?"✓":""}</i><b>{m.name}</b><small>{m.subtitle}</small><span>0{i+1}</span></button>)}</div>
+        <div className="map-picker">{MAPS.map((m,i)=><button key={m.id} className={`map-${m.id} ${maps.includes(m.id)?"selected":""}`} style={{"--map":m.floor,"--accent":m.accent} as React.CSSProperties} onClick={()=>setMaps(v=>v.includes(m.id)?(v.length>1?v.filter(x=>x!==m.id):v):[...v,m.id])}><i>{maps.includes(m.id)?"✓":""}</i><strong>{m.icon}</strong><b>{m.name}</b><small>{m.subtitle}</small><span>0{i+1}</span></button>)}</div>
         {error&&<p className="form-error">{error}</p>}<button className="primary-action" disabled={busy||!maps.length} onClick={createRoom}>{busy?"ĐANG TẠO...":"TẠO PHÒNG →"}</button>
       </div>
     </section>

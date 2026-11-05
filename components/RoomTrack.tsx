@@ -146,7 +146,7 @@ export function RoomTrack({ players, mapId, round, startedAt }: { players: Playe
       <div className="survival-counter">CÒN TRỤ {players.filter((player) => !player.finishPosition).length}/{players.length}</div>
     </div>
     <div className="realtime-chip"><i/> LIVE · TỌA ĐỘ THỰC</div>
-    <div className="map-plaque"><small>ROUND MAP</small><b>{map.name}</b><span>{map.subtitle}</span></div>
+    <div className="map-plaque"><i>{map.icon}</i><small>PSI ROUND MAP</small><b>{map.name}</b><span>{map.subtitle}</span></div>
   </div>;
 }
 

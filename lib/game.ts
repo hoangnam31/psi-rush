@@ -1,9 +1,9 @@
 export const MAPS = [
-  { id: "sky", name: "Neon Sky Gauntlet", subtitle: "Đĩa xoay chuyển động xen kẽ đường đua neon", mode: "race", start: "line", sky: "#1a3a91", floor: "#6459e8", accent: "#35dcff" },
-  { id: "jungle", name: "Caro Sụp Đổ", subtitle: "Sinh tồn trên bàn caro khép kín", mode: "survival", start: "tiles", sky: "#0f5f53", floor: "#45c77e", accent: "#ffb238" },
-  { id: "ice", name: "Ice Drift", subtitle: "Băng trượt, vực lớn và cầu nổi di chuyển", mode: "race", start: "line", sky: "#2756a6", floor: "#a6edff", accent: "#ffffff" },
-  { id: "sweep", name: "Block Storm", subtitle: "Luồn khe, nhảy thấp và sống sót trên sàn vuông", mode: "survival", start: "square", sky: "#391177", floor: "#6c4cff", accent: "#ff56a9" },
-  { id: "lava", name: "Đảo Laser", subtitle: "Né các lượt laser quét ngày càng dày đặc", mode: "survival", start: "arena", sky: "#5a1522", floor: "#c84930", accent: "#ff376f" },
+  { id: "sky", icon: "✦", name: "PSI Neon Sky", subtitle: "Đĩa bay và cổng thử thách trên tầng mây", mode: "race", start: "line", sky: "#315b91", floor: "#5877ba", accent: "#f2b63f" },
+  { id: "jungle", icon: "▦", name: "Caro Sụp Đổ", subtitle: "Sinh tồn trên bàn caro khép kín", mode: "survival", start: "tiles", sky: "#327064", floor: "#78bd8d", accent: "#f2ad40" },
+  { id: "ice", icon: "❄", name: "PSI Ice Drift", subtitle: "Băng trượt, vực lớn và cầu nổi di chuyển", mode: "race", start: "line", sky: "#5b88ad", floor: "#b9e8ee", accent: "#fff2cf" },
+  { id: "sweep", icon: "▰", name: "PSI Block Storm", subtitle: "Luồn khe, nhảy thấp và trụ lại trên sàn tập", mode: "survival", start: "square", sky: "#243d70", floor: "#4d69a7", accent: "#f0ae39" },
+  { id: "lava", icon: "⌁", name: "Đảo Laser PSI", subtitle: "Né các lượt laser quét ngày càng dày đặc", mode: "survival", start: "arena", sky: "#43394f", floor: "#c86756", accent: "#ffd05a" },
 ] as const;
 
 export type GameMode = "race" | "survival";
