@@ -1,24 +1,57 @@
-# Wobble Rush
+# PSI RUSH
 
-Game đua vượt chướng ngại vật chạy trực tiếp trên trình duyệt.
+Game party multiplayer chạy trên trình duyệt, có phòng riêng, mã QR tham gia, màn hình host/admin, nhiều round và 5 loại map. Nhánh `vercel` dùng Next.js 16 và PostgreSQL để triển khai trên Vercel.
 
 ## Chạy local
 
+Yêu cầu Node.js 22 và một database PostgreSQL (khuyến nghị Neon).
+
 ```bash
-python3 -m http.server 8080 --directory dist
+cp .env.example .env.local
+npm install
+npm run db:migrate
+npm run dev
 ```
 
-Mở `http://localhost:8080`.
+Điền `DATABASE_URL` thật trong `.env.local`, sau đó mở `http://localhost:3000`.
 
-## Điều khiển
+## Triển khai Vercel
 
-- WASD / phím mũi tên: di chuyển
-- Space: nhảy
-- Shift: tăng tốc
-- Mobile: joystick, nút nhảy và boost
+1. Import repository `hoangnam31/psi-rush` vào Vercel và chọn branch `vercel`.
+2. Trong Vercel Marketplace, thêm Neon Postgres vào project. Neon sẽ cấp `DATABASE_URL`.
+3. Thêm biến `PSI_RUSH_SITE_ENABLED=true` cho Production, Preview và Development.
+4. Chạy migration một lần từ máy local với đúng `DATABASE_URL` production:
 
-## Multiplayer
+   ```bash
+   npm run db:migrate
+   ```
 
-Bản demo triển khai dùng AI để mô phỏng phòng 20–200 tay đua và giữ toàn bộ gameplay chạy được ngay trên static hosting. Client có sẵn điểm nối WebSocket qua khóa `localStorage.wobble_server`.
+5. Deploy project. Vercel tự nhận diện Next.js; không cần cấu hình Build Command hay Output Directory riêng.
 
-Để vận hành 200 người thật trong một phòng, backend production nên dùng authoritative game loop, room sharding, snapshot interpolation và WebSocket gateway. Tần suất hợp lý: server tick 20 Hz, client render 60 FPS, snapshot delta 10–15 Hz. Không tin vị trí do client gửi lên; server chỉ nhận input và tự tính trạng thái.
+Để tạm đóng game, đổi `PSI_RUSH_SITE_ENABLED=false` trong Vercel rồi redeploy. Tất cả trang và API sẽ trả màn hình bảo trì/HTTP 503.
+
+## Biến môi trường
+
+| Tên | Bắt buộc | Mô tả |
+| --- | --- | --- |
+| `DATABASE_URL` | Có | Chuỗi kết nối PostgreSQL/Neon, chỉ dùng phía server |
+| `PSI_RUSH_SITE_ENABLED` | Không | `true` để mở; `false`, `off`, `0` hoặc `disabled` để đóng |
+
+Không commit `.env.local` hoặc chuỗi kết nối database vào GitHub.
+
+## Các lệnh chính
+
+```bash
+npm run dev          # Development server
+npm run build        # Production build
+npm run start        # Chạy production build
+npm run lint         # ESLint
+npm run db:generate  # Tạo migration khi schema thay đổi
+npm run db:migrate   # Áp migration lên PostgreSQL
+```
+
+Migration PostgreSQL nằm trong `drizzle-vercel/`. Thư mục `drizzle/` là migration D1 cũ của nhánh Sites và không được dùng trong bản Vercel.
+
+## Lưu ý tải 200 người
+
+Giao diện cho phép tối đa 200 người/phòng. Bản hiện tại đồng bộ trạng thái bằng HTTP polling và PostgreSQL. Trước một sự kiện thực tế 200 thiết bị, cần load-test trên đúng gói Vercel/Neon; nếu cần tần suất vị trí cao hơn, nên chuyển luồng vị trí realtime sang WebSocket/Redis chuyên dụng thay vì tăng polling vào Postgres.

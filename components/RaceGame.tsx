@@ -310,7 +310,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
     function resolveRect(obstacle: Obstacle, obstacleX: number, now: number) {
       const nearX = Math.max(obstacleX, Math.min(p.x, obstacleX + obstacle.w));
       const nearY = Math.max(obstacle.y, Math.min(p.y, obstacle.y + obstacle.h));
-      let dx = p.x - nearX, dy = p.y - nearY;
+      const dx = p.x - nearX, dy = p.y - nearY;
       const distance = Math.hypot(dx, dy);
       if (distance >= PLAYER_R) return false;
 

@@ -16,11 +16,11 @@ export type Room = {
 
 export type RoomState = { room: Room; players: Player[]; results: RoundResult[] };
 
-export async function roomAction<T = any>(code: string, payload: Record<string, unknown>): Promise<T> {
+export async function roomAction<T = Record<string, unknown>>(code: string, payload: Record<string, unknown>): Promise<T> {
   const response = await fetch(`/api/rooms/${encodeURIComponent(code)}`, {
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload),
   });
-  const data = await response.json() as any;
+  const data = await response.json() as T & { error?: string };
   if (!response.ok) throw new Error(data.error || "Thao tác thất bại");
   return data as T;
 }

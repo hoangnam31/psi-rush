@@ -23,6 +23,22 @@ const eslintConfig = defineConfig([
       "react-hooks/set-state-in-effect": "off",
     },
   },
+  {
+    files: ["app/host/page.tsx", "app/join/page.tsx", "app/play/page.tsx"],
+    rules: {
+      // These pages hydrate browser-only room sessions and start polling on
+      // mount; the state writes are intentional synchronization effects.
+      "react-hooks/set-state-in-effect": "off",
+    },
+  },
+  {
+    files: ["components/RoomTrack.tsx"],
+    rules: {
+      // Animation positions live in refs so the host overview can interpolate
+      // at 60 FPS without re-rendering the entire player list every frame.
+      "react-hooks/refs": "off",
+    },
+  },
 ]);
 
 export default eslintConfig;

@@ -88,7 +88,7 @@ export async function POST(request: Request, context: Context) {
 
     if (action === "join") {
       if (room.status !== "waiting") return Response.json({ error: "Trận đấu đã bắt đầu" }, { status: 409 });
-      const count = (await retryDb(() => db.select({ count: sql<number>`count(*)` }).from(players).where(eq(players.roomId, room.id))))[0]?.count ?? 0;
+      const count = Number((await retryDb(() => db.select({ count: sql<number>`count(*)` }).from(players).where(eq(players.roomId, room.id))))[0]?.count ?? 0);
       if (count >= room.maxPlayers) return Response.json({ error: "Phòng đã đầy" }, { status: 409 });
       const name = String(body.name || "").trim().slice(0, 16);
       if (!name) return Response.json({ error: "Hãy nhập tên người chơi" }, { status: 400 });
@@ -107,7 +107,7 @@ export async function POST(request: Request, context: Context) {
         if (nextRound > room.totalRounds) {
           await db.update(rooms).set({ status: "finished", updatedAt: sql`CURRENT_TIMESTAMP` }).where(eq(rooms.id, room.id));
         } else {
-          const playerCount = (await retryDb(() => db.select({ count: sql<number>`count(*)` }).from(players).where(eq(players.roomId, room.id))))[0]?.count ?? 1;
+          const playerCount = Number((await retryDb(() => db.select({ count: sql<number>`count(*)` }).from(players).where(eq(players.roomId, room.id))))[0]?.count ?? 1);
           await db.update(players).set({ progress: 0, positionX: Math.round(courseWidthForPlayers(playerCount) / 2), finishPosition: null }).where(eq(players.roomId, room.id));
           await db.update(rooms).set({ status: "racing", currentRound: nextRound, currentMap: pickMap(pool, room.currentMap, nextRound, room.id), updatedAt: sql`CURRENT_TIMESTAMP` }).where(eq(rooms.id, room.id));
         }
@@ -140,7 +140,7 @@ export async function POST(request: Request, context: Context) {
     if (action === "finish") {
       const existing = (await db.select().from(roundResults).where(and(eq(roundResults.roomId, room.id), eq(roundResults.roundNumber, room.currentRound), eq(roundResults.playerId, player.id))).limit(1))[0];
       if (!existing) {
-        const count = (await db.select({ count: sql<number>`count(*)` }).from(roundResults).where(and(eq(roundResults.roomId, room.id), eq(roundResults.roundNumber, room.currentRound))))[0]?.count ?? 0;
+        const count = Number((await db.select({ count: sql<number>`count(*)` }).from(roundResults).where(and(eq(roundResults.roomId, room.id), eq(roundResults.roundNumber, room.currentRound))))[0]?.count ?? 0);
         const position = count + 1, points = scoreForPosition(position);
         await db.insert(roundResults).values({ roomId: room.id, roundNumber: room.currentRound, playerId: player.id, position, points, timeMs: Math.max(0, Number(body.timeMs) || 0) });
         await db.update(players).set({ progress: 100, finishPosition: position, score: sql`${players.score} + ${points}`, lastSeenAt: sql`CURRENT_TIMESTAMP` }).where(eq(players.id, player.id));
