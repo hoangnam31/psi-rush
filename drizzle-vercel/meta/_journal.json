@@ -8,6 +8,13 @@
       "when": 1793850032408,
       "tag": "0000_freezing_revanche",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793871066052,
+      "tag": "0001_daily_cyclops",
+      "breakpoints": true
     }
   ]
 }

@@ -1,0 +1,1 @@
+ALTER TABLE "players" ADD COLUMN "character_id" text DEFAULT 'corgi_scout' NOT NULL;

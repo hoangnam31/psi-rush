@@ -25,7 +25,7 @@ export default function Home() {
       </div>
       <div className="landing-art" aria-hidden="true">
         <div className="hero-ring r1"/><div className="hero-ring r2"/><div className="hero-burst">GO!</div>
-        <Bean color="#8b5cf6" size="lg" crown/><div className="side-bean pink"><Bean color="#ff3d9a"/></div><div className="side-bean lime"><Bean color="#b6f43b"/></div>
+        <Bean characterId="corgi_scout" size="lg" crown/><div className="side-bean pink"><Bean characterId="cat_coder"/></div><div className="side-bean lime"><Bean characterId="penguin_pilot"/></div>
       </div>
     </section>
     <footer className="landing-footer"><span>PSI RUSH</span><span>Built for teams that play hard.</span></footer>

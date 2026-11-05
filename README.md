@@ -2,6 +2,8 @@
 
 Game party multiplayer chạy trên trình duyệt, có phòng riêng, mã QR tham gia, màn hình host/admin, nhiều round và 5 loại map. Nhánh `vercel` dùng Next.js 16 và PostgreSQL để triển khai trên Vercel.
 
+Game có 8 mascot có thể chọn, dùng chung controller Canvas cho di chuyển, nhảy, dash, va chạm và respawn. Chi tiết kiến trúc và pipeline asset nằm trong [docs/CHARACTERS.md](docs/CHARACTERS.md).
+
 ## Chạy local
 
 Yêu cầu Node.js 22 và một database PostgreSQL (khuyến nghị Neon).
@@ -46,6 +48,7 @@ npm run dev          # Development server
 npm run build        # Production build
 npm run start        # Chạy production build
 npm run lint         # ESLint
+npm run test:characters # Kiểm tra manifest và 8 asset nhân vật
 npm run db:generate  # Tạo migration khi schema thay đổi
 npm run db:migrate   # Áp migration lên PostgreSQL
 ```

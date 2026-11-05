@@ -1,0 +1,96 @@
+{
+  "game": "PSI Rush",
+  "version": "0.1.0",
+  "asset_type": "concept_reference_not_rigged",
+  "style": "original squishy plush animal mascots; playful party physics; avoid copying any existing game characters",
+  "source_image": "references in PNG; do not treat as rigged 3D models or animation spritesheets",
+  "characters": [
+    {
+      "id": "corgi_scout",
+      "displayName": "Corgi Scout",
+      "role": "Balanced explorer",
+      "referenceImage": "references/corgi_scout.png",
+      "baseSpeed": 5,
+      "jumpImpulse": 6.5,
+      "mass": 1
+    },
+    {
+      "id": "cat_coder",
+      "displayName": "Cat Coder",
+      "role": "Agile coder",
+      "referenceImage": "references/cat_coder.png",
+      "baseSpeed": 5.6,
+      "jumpImpulse": 6.8,
+      "mass": 0.85
+    },
+    {
+      "id": "penguin_pilot",
+      "displayName": "Penguin Pilot",
+      "role": "Precision navigator",
+      "referenceImage": "references/penguin_pilot.png",
+      "baseSpeed": 4.8,
+      "jumpImpulse": 6.3,
+      "mass": 1.05
+    },
+    {
+      "id": "bunny_creator",
+      "displayName": "Bunny Creator",
+      "role": "Support creator",
+      "referenceImage": "references/bunny_creator.png",
+      "baseSpeed": 5.3,
+      "jumpImpulse": 7.0,
+      "mass": 0.85
+    },
+    {
+      "id": "panda_dj",
+      "displayName": "Panda Dj",
+      "role": "Rhythm booster",
+      "referenceImage": "references/panda_dj.png",
+      "baseSpeed": 4.9,
+      "jumpImpulse": 6.4,
+      "mass": 1.15
+    },
+    {
+      "id": "bear_guard",
+      "displayName": "Bear Guard",
+      "role": "Heavy defender",
+      "referenceImage": "references/bear_guard.png",
+      "baseSpeed": 4.1,
+      "jumpImpulse": 5.8,
+      "mass": 1.45
+    },
+    {
+      "id": "red_panda_analyst",
+      "displayName": "Red Panda Analyst",
+      "role": "AI analyst",
+      "referenceImage": "references/red_panda_analyst.png",
+      "baseSpeed": 5.0,
+      "jumpImpulse": 6.5,
+      "mass": 0.95
+    },
+    {
+      "id": "rooster_speedster",
+      "displayName": "Rooster Speedster",
+      "role": "Speed runner",
+      "referenceImage": "references/rooster_speedster.png",
+      "baseSpeed": 6.0,
+      "jumpImpulse": 6.7,
+      "mass": 0.85
+    }
+  ],
+  "controls": {
+    "move": "WASD or arrows",
+    "jump": "Space",
+    "dash": "Shift",
+    "interact": "E",
+    "camera": "mouse or right stick"
+  },
+  "implementationNotes": [
+    "Inspect existing game stack and architecture before editing",
+    "Implement one reusable player controller and data-driven character selection",
+    "Use existing physics engine/collision; do not assume art images are 3D assets",
+    "For 2D prototype, crop renders can be used as static placeholder visuals (with their background) until transparent game sprites exist",
+    "For 3D, create or import original rigged low-poly/plush models, collision shapes, and idle/run/jump/fall/land animations",
+    "Do not change the game's framework or rewrite unrelated modules"
+  ]
+}

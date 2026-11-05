@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { courseWidthForPlayers, MAPS, survivalSizeForPlayers } from "../lib/game";
 import { blockStormWaveAt } from "../lib/block-storm";
 import { TILE_COUNT, tileCollapseState } from "../lib/tile-collapse";
+import { getCharacter } from "../lib/characters";
 import type { Player } from "../lib/types";
 
 const COURSE = 10000;
@@ -137,9 +138,9 @@ export function RoomTrack({ players, mapId, round, startedAt }: { players: Playe
           className={`track-runner ${player.finishPosition ? "eliminated" : ""}`}
           key={player.id}
           ref={(node) => { if (node) nodes.current.set(player.id, node); else nodes.current.delete(player.id); }}
-          style={{ bottom: `${position.progress}%`, left: `${position.lane}%`, "--bean": player.color } as React.CSSProperties}
+          style={{ bottom: `${position.progress}%`, left: `${position.lane}%` }}
         >
-          <span>{player.name}</span><i><b/><b/></i>
+          <span>{player.name}</span><i className="track-mascot" style={{ backgroundImage: `url(${getCharacter(player.characterId).image})` }}/>
         </div>;
       })}
       <div className="survival-counter">CÒN TRỤ {players.filter((player) => !player.finishPosition).length}/{players.length}</div>
@@ -166,7 +167,7 @@ function RaceProgressTrack({ players, map }: { players: Player[]; map: RaceMap }
     <div className="race-progress-glow"/>
     <div className="race-progress-summary">
       <div><small>ROUND MAP · LIVE PROGRESS</small><b>{map.name}</b><span>{map.subtitle}</span></div>
-      <div className="race-leader-chip"><small>ĐANG DẪN ĐẦU</small><b><i style={{ background: leader?.color }}/>{leader?.name ?? "—"}</b><span>{leader ? `${Math.round(leader.progress)}%` : "0%"}</span></div>
+      <div className="race-leader-chip"><small>ĐANG DẪN ĐẦU</small><b><i style={{ backgroundImage: leader ? `url(${getCharacter(leader.characterId).image})` : undefined }}/>{leader?.name ?? "—"}</b><span>{leader ? `${Math.round(leader.progress)}%` : "0%"}</span></div>
     </div>
     <div className="race-progress-scroll">
       <div className="race-progress-scale">
@@ -178,10 +179,10 @@ function RaceProgressTrack({ players, map }: { players: Player[]; map: RaceMap }
           const progress = player.finishPosition ? 100 : clamp(player.progress / 100) * 100;
           return <div className={`race-progress-row ${player.finishPosition ? "finished" : ""} ${rank < 3 ? `top-${rank + 1}` : ""}`} key={player.id} style={{ transform: `translateY(${rank * rowHeight}px)` }}>
             <b className="race-live-rank">#{rank + 1}</b>
-            <div className="race-player-label"><i style={{ "--bean": player.color } as React.CSSProperties}><b/><b/></i><span><strong>{player.name}</strong><small>{player.finishPosition ? `VỀ ĐÍCH #${player.finishPosition}` : rank === 0 ? "ĐANG DẪN ĐẦU" : `CÁCH ĐÍCH ${Math.max(0, Math.round(100 - progress))}%`}</small></span></div>
+            <div className="race-player-label"><i style={{ backgroundImage: `url(${getCharacter(player.characterId).image})` }}/><span><strong>{player.name}</strong><small>{player.finishPosition ? `VỀ ĐÍCH #${player.finishPosition}` : rank === 0 ? "ĐANG DẪN ĐẦU" : `CÁCH ĐÍCH ${Math.max(0, Math.round(100 - progress))}%`}</small></span></div>
             <div className="race-progress-rail">
               <i className="race-progress-fill" style={{ width: `${progress}%`, background: player.color }}/>
-              <span className="race-progress-marker" style={{ left: `${progress}%`, "--bean": player.color } as React.CSSProperties}><i><b/><b/></i></span>
+              <span className="race-progress-marker" style={{ left: `${progress}%` }}><i style={{ backgroundImage: `url(${getCharacter(player.characterId).image})` }}/></span>
             </div>
             <strong className="race-progress-value">{player.finishPosition ? "✓" : `${Math.round(progress)}%`}</strong>
           </div>;

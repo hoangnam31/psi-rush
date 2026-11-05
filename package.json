@@ -10,6 +10,7 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
+    "test:characters": "node scripts/validate-characters.mjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate"
   },

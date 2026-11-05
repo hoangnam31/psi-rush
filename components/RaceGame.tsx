@@ -5,6 +5,7 @@ import { BASE_COURSE_WIDTH, courseWidthForPlayers, MAPS, survivalSizeForPlayers 
 import { GameAudio } from "../lib/game-audio";
 import { blockStormWaveAt } from "../lib/block-storm";
 import { tileCollapseState } from "../lib/tile-collapse";
+import { CHARACTERS, getCharacter, getCharacterPhysics, type CharacterVisualState } from "../lib/characters";
 import type { Player } from "../lib/types";
 
 type Props = {
@@ -189,7 +190,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
   const finishCb = useRef(onFinish);
   const eliminateCb = useRef(onEliminate);
   const playersRef = useRef(players);
-  const input = useRef({ x: 0, y: 0, jump: false, dash: false });
+  const input = useRef({ x: 0, y: 0, jump: false, dash: false, interact: false });
   const [countdown, setCountdown] = useState("3");
   const [dash, setDash] = useState(100);
   const [mana, setMana] = useState(100);
@@ -210,6 +211,13 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
     const audio = new GameAudio(map.id);
     audioRef.current = audio;
     void audio.unlock();
+    const characterImages = new Map<string, HTMLImageElement>();
+    for (const definition of CHARACTERS) {
+      const image = new Image();
+      image.src = definition.image;
+      characterImages.set(definition.id, image);
+    }
+    const physics = getCharacterPhysics(me.characterId);
     let raf = 0;
     let last = performance.now();
     let start = 0;
@@ -256,7 +264,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
     const roundGoEpoch = (Number.isFinite(Date.parse(normalizedStartedAt)) ? Date.parse(normalizedStartedAt) : Date.now()) + 3000;
     const readyAt = performance.now() + Math.max(0, roundGoEpoch - Date.now());
     const p = {
-      x: spawn.x, y: spawn.y, vx: 0, vy: 0, z: 0, vz: 0, stun: 0, hitCd: 0,
+      x: spawn.x, y: spawn.y, vx: 0, vy: 0, z: 0, vz: 0, stun: 0, hitCd: 0, hitTime: 0, landTime: 0, respawnTime: 0,
       dashCd: 0, dashTime: 0, mana: 100, lastJump: -Infinity,
       falling: false, fallTime: 0, fallPit: null as Pit | null, fallEdge: false,
       disintegrating: false, disintegrateTime: 0, checkpoint: spawn.y, checkpointIndex: 0,
@@ -264,12 +272,16 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
     const particles: Particle[] = [];
     const remoteStates = new Map<string, RemoteState>();
     const keys: Record<string, boolean> = {};
+    let gamepadJump = false;
+    let gamepadDash = false;
+    let gamepadInteract = false;
 
     const down = (event: KeyboardEvent) => {
       void audio.unlock();
       keys[event.key.toLowerCase()] = true;
       if (event.code === "Space") input.current.jump = true;
       if (event.key === "Shift") input.current.dash = true;
+      if (event.key.toLowerCase() === "e") input.current.interact = true;
       if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.code)) event.preventDefault();
     };
     const up = (event: KeyboardEvent) => { keys[event.key.toLowerCase()] = false; };
@@ -336,10 +348,10 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
         p.vy -= intoSurface * 1.22 * ny;
       }
       if (p.hitCd <= 0) {
-        const force = obstacle.kind === "mover" ? 440 : 185;
+        const force = (obstacle.kind === "mover" ? 440 : 185) / Math.sqrt(physics.mass);
         p.vx += nx * force; p.vy += ny * force;
         p.stun = obstacle.kind === "mover" ? .34 : .16;
-        p.hitCd = .18;
+        p.hitCd = .18; p.hitTime = .28;
         shake = obstacle.kind === "mover" ? .72 : .32;
         audio.collision(obstacle.kind === "mover");
         burst(p.x, p.y, obstacle.color, obstacle.kind === "mover" ? 12 : 7);
@@ -355,11 +367,11 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       if (distance > radius + PLAYER_R || p.hitCd > 0) return;
       const overlap = radius + PLAYER_R - distance;
       p.x += dx / distance * (overlap + 2); p.y += dy / distance * (overlap + 2);
-      p.vx = dx / distance * 760;
-      p.vy = dy / distance * 760;
-      p.vz = 260;
+      p.vx = dx / distance * 760 / Math.sqrt(physics.mass);
+      p.vy = dy / distance * 760 / Math.sqrt(physics.mass);
+      p.vz = 260 / Math.sqrt(physics.mass);
       p.stun = .58;
-      p.hitCd = .3;
+      p.hitCd = .3; p.hitTime = .34;
       shake = .9;
       audio.collision(true);
       burst(cx, cy, obstacle.color, 16);
@@ -418,11 +430,13 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
         }
         const nx = dx / distance, ny = dy / distance;
         const overlap = PLAYER_R * 2 - distance;
-        p.x += nx * (overlap + 1.5); p.y += ny * (overlap + 1.5);
+        const otherMass = getCharacterPhysics(other.characterId).mass;
+        const response = otherMass / (physics.mass + otherMass) * 2;
+        p.x += nx * (overlap + 1.5) * response; p.y += ny * (overlap + 1.5) * response;
         const inward = p.vx * nx + p.vy * ny;
         if (inward < 0) { p.vx -= inward * nx; p.vy -= inward * ny; }
         if (p.hitCd <= 0) {
-          p.vx += nx * 135; p.vy += ny * 135; p.stun = .1; p.hitCd = .12; shake = .2;
+          p.vx += nx * 135 * response; p.vy += ny * 135 * response; p.stun = .1; p.hitCd = .12; p.hitTime = .18; shake = .2;
           burst((p.x + otherX) / 2, (p.y + otherY) / 2, "#ffffff", 5);
           showImpact("BUMP!", now);
         }
@@ -584,7 +598,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
 
     function respawn(now: number) {
       p.x = courseWidth / 2; p.y = p.checkpoint + 45; p.vx = 0; p.vy = 0; p.z = 0; p.vz = 0;
-      p.falling = false; p.fallTime = 0; p.fallPit = null; p.fallEdge = false; p.stun = .55; p.hitCd = .8;
+      p.falling = false; p.fallTime = 0; p.fallPit = null; p.fallEdge = false; p.stun = .55; p.hitCd = .8; p.respawnTime = .7; p.landTime = 0; p.hitTime = 0;
       p.disintegrating = false; p.disintegrateTime = 0;
       p.mana = 100; p.lastJump = -Infinity; p.dashCd = 0; p.dashTime = 0;
       cameraX = p.x; cameraY = p.y;
@@ -605,6 +619,9 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       updateRemotePlayers(now, dt);
       p.stun = Math.max(0, p.stun - dt);
       p.hitCd = Math.max(0, p.hitCd - dt);
+      p.hitTime = Math.max(0, p.hitTime - dt);
+      p.landTime = Math.max(0, p.landTime - dt);
+      p.respawnTime = Math.max(0, p.respawnTime - dt);
       p.dashCd = Math.max(0, p.dashCd - dt);
       p.dashTime = Math.max(0, p.dashTime - dt);
 
@@ -624,14 +641,25 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
           } else respawn(now);
         }
       } else {
+        const pads = navigator.getGamepads?.() ?? [];
+        const pad = Array.from(pads).find((candidate): candidate is Gamepad => Boolean(candidate));
+        const axisX = Math.abs(pad?.axes[0] ?? 0) > .14 ? pad!.axes[0] : 0;
+        const axisY = Math.abs(pad?.axes[1] ?? 0) > .14 ? -(pad!.axes[1]) : 0;
+        const nextGamepadJump = Boolean(pad?.buttons[0]?.pressed);
+        const nextGamepadDash = Boolean(pad?.buttons[1]?.pressed || pad?.buttons[5]?.pressed);
+        const nextGamepadInteract = Boolean(pad?.buttons[2]?.pressed);
+        if (nextGamepadJump && !gamepadJump) input.current.jump = true;
+        if (nextGamepadDash && !gamepadDash) input.current.dash = true;
+        if (nextGamepadInteract && !gamepadInteract) input.current.interact = true;
+        gamepadJump = nextGamepadJump; gamepadDash = nextGamepadDash; gamepadInteract = nextGamepadInteract;
 
-        let ix = (keys.d || keys.arrowright ? 1 : 0) - (keys.a || keys.arrowleft ? 1 : 0) + input.current.x;
-        let iy = (keys.w || keys.arrowup ? 1 : 0) - (keys.s || keys.arrowdown ? 1 : 0) + input.current.y;
+        let ix = (keys.d || keys.arrowright ? 1 : 0) - (keys.a || keys.arrowleft ? 1 : 0) + input.current.x + axisX;
+        let iy = (keys.w || keys.arrowup ? 1 : 0) - (keys.s || keys.arrowdown ? 1 : 0) + input.current.y + axisY;
         const inputLength = Math.hypot(ix, iy);
         if (inputLength > 1) { ix /= inputLength; iy /= inputLength; }
         if (input.current.jump && p.z <= 1 && p.stun <= .2) {
           if (p.mana >= 25) {
-            p.vz = JUMP_SPEED;
+            p.vz = JUMP_SPEED * physics.jumpMultiplier;
             p.mana -= 25;
             p.lastJump = now;
             audio.jump();
@@ -643,14 +671,17 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
         input.current.jump = false;
         if (input.current.dash && p.dashCd <= 0 && p.stun <= .2) { p.dashTime = .35; p.dashCd = 3; audio.boost(); burst(p.x, p.y - 25, map.accent, 9); }
         input.current.dash = false;
+        // E / gamepad X is reserved for map interactables. Clearing it here
+        // keeps the shared controller edge-triggered until an interactable is added.
+        input.current.interact = false;
         if (now - p.lastJump > 900 && p.mana < 100) p.mana = Math.min(100, p.mana + 8.5 * dt);
 
         // Block Storm obstacles should push the bean without taking control
         // away. Keep enough steering authority to slide across the push
         // direction while preserving the collision's momentum.
         const control = p.stun > 0 ? (map.id === "sweep" ? .7 : .1) : 1;
-        const acceleration = 1280 * control;
-        const maxSpeed = p.dashTime > 0 ? 850 : (map.id === "ice" ? 420 : 365);
+        const acceleration = 1280 * control * (.85 + physics.speedMultiplier * .15);
+        const maxSpeed = p.dashTime > 0 ? 850 * Math.max(.94, physics.speedMultiplier) : (map.id === "ice" ? 420 : 365) * physics.speedMultiplier;
         p.vx += ix * acceleration * dt;
         p.vy += iy * acceleration * dt;
         // Apply stronger braking only after the stick/key is released. Active
@@ -664,8 +695,9 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
         const speed = Math.hypot(p.vx, p.vy);
         if (speed > maxSpeed) { p.vx = p.vx / speed * maxSpeed; p.vy = p.vy / speed * maxSpeed; }
         p.x += p.vx * dt; p.y += p.vy * dt;
+        const previousZ = p.z, previousVz = p.vz;
         p.vz -= GRAVITY * dt; p.z += p.vz * dt;
-        if (p.z < 0) { p.z = 0; p.vz = 0; }
+        if (p.z < 0) { p.z = 0; p.vz = 0; if (previousZ > 1 && previousVz < -90) p.landTime = .24; }
         p.y = Math.max(-120, p.y);
 
         if (map.id === "sky" && p.z <= 2) {
@@ -823,7 +855,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
         const playerY = sy(p.y) + fallDrop;
         ctx.save();
         if (p.fallPit) clipPit(ctx, p.fallPit, sx, sy);
-        drawBean(ctx, sx(p.x, p.y), playerY, playerScale, me.color, me.name, fallAlpha, raceSeconds, true, p.stun);
+        drawMascot(ctx, sx(p.x, p.y), playerY, playerScale, me.characterId, me.name, fallAlpha, raceSeconds, true, "fall");
         ctx.restore();
 
         // Repaint solid platforms after the falling bean so the character truly
@@ -867,13 +899,13 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
         .filter((other) => other.id !== me.id && !other.finishPosition)
         .map((other) => {
           const remote = remoteStates.get(other.id);
-          return { ...other, worldY: remote?.y ?? other.progress / 100 * COURSE, worldX: remote?.x ?? other.positionX ?? 150 + hash(other.id) % (courseWidth - 300) };
+          return { ...other, worldY: remote?.y ?? other.progress / 100 * COURSE, worldX: remote?.x ?? other.positionX ?? 150 + hash(other.id) % (courseWidth - 300), remoteSpeed: Math.hypot(remote?.vx ?? 0, remote?.vy ?? 0) };
         })
         .filter((other) => sy(other.worldY) > -90 && sy(other.worldY) < h + 100)
         .sort((a, b) => b.worldY - a.worldY);
       for (const other of visiblePlayers) {
         const scale = 35 * baseScale;
-        drawBean(ctx, sx(other.worldX, other.worldY), sy(other.worldY), scale, other.color, other.name, .9, raceSeconds, false, 0);
+        drawMascot(ctx, sx(other.worldX, other.worldY), sy(other.worldY), scale, other.characterId, other.name, .9, raceSeconds, false, other.remoteSpeed > 40 ? "locomotion" : "idle");
       }
 
       for (const particle of particles) {
@@ -884,7 +916,10 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
         ctx.beginPath(); ctx.arc(sx(particle.x, particle.y), y, 3 + particle.life * 5, 0, Math.PI * 2); ctx.fill();
       }
       ctx.globalAlpha = 1;
-      if (!p.falling && !p.disintegrating) drawBean(ctx, sx(p.x, p.y), sy(p.y) - p.z * baseScale, 35 * baseScale, me.color, me.name, 1, raceSeconds, true, p.stun);
+      if (!p.falling && !p.disintegrating) {
+        const state: CharacterVisualState = p.respawnTime > 0 ? "respawn" : p.hitTime > 0 ? "hit" : p.dashTime > 0 ? "dash" : p.landTime > 0 ? "land" : p.z > 8 ? (p.vz >= 0 ? "jump" : "fall") : Math.hypot(p.vx, p.vy) > 35 ? "locomotion" : "idle";
+        drawMascot(ctx, sx(p.x, p.y), sy(p.y) - p.z * baseScale, 35 * baseScale, me.characterId, me.name, 1, raceSeconds, true, state);
+      }
       ctx.restore();
 
     }
@@ -1239,29 +1274,33 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       context.fillStyle = "#4a208d"; context.beginPath(); context.arc(x, y, 18 * scale, 0, Math.PI * 2); context.fill();
     }
 
-    function drawBean(
-      context: CanvasRenderingContext2D, x: number, y: number, radius: number, color: string, name: string,
-      alpha: number, time: number, isMe: boolean, stun: number,
+    function drawMascot(
+      context: CanvasRenderingContext2D, x: number, y: number, radius: number, characterId: string, name: string,
+      alpha: number, time: number, isMe: boolean, state: CharacterVisualState,
     ) {
-      const run = Math.min(1, Math.hypot(p.vx, p.vy) / 280);
-      const bob = isMe ? Math.abs(Math.sin(time * 9)) * radius * .13 * run : Math.sin(time * 5 + hash(name)) * radius * .05;
-      const tilt = isMe ? Math.max(-.2, Math.min(.2, p.vx / 1200)) : 0;
-      const squish = isMe && stun > .2 ? .78 : 1;
-      context.save(); context.globalAlpha = alpha; context.translate(x, y - bob); context.rotate(tilt); context.scale(1 / squish, squish);
-      context.fillStyle = "rgba(12,4,35,.28)"; context.beginPath(); context.ellipse(4, radius * 1.27 + bob, radius * .95, radius * .34, 0, 0, Math.PI * 2); context.fill();
-      const limbSwing = Math.sin(time * 10) * radius * .23 * run;
-      context.strokeStyle = color; context.lineWidth = radius * .45; context.lineCap = "round";
-      context.beginPath(); context.moveTo(-radius * .56, radius * .15); context.lineTo(-radius * .92, radius * .3 + limbSwing); context.moveTo(radius * .56, radius * .15); context.lineTo(radius * .92, radius * .3 - limbSwing); context.stroke();
-      context.beginPath(); context.moveTo(-radius * .33, radius * .72); context.lineTo(-radius * .38 - limbSwing * .32, radius * 1.22); context.moveTo(radius * .33, radius * .72); context.lineTo(radius * .38 + limbSwing * .32, radius * 1.22); context.stroke();
-      const bodyGradient = context.createLinearGradient(-radius, -radius, radius, radius);
-      bodyGradient.addColorStop(0, colorMix(color, "#ffffff", .32)); bodyGradient.addColorStop(.52, color); bodyGradient.addColorStop(1, colorMix(color, "#000000", .28));
-      context.fillStyle = bodyGradient; context.strokeStyle = isMe ? "#ffffff" : colorMix(color, "#000000", .35); context.lineWidth = Math.max(2, radius * .12);
-      context.beginPath(); context.roundRect(-radius, -radius * 1.25, radius * 2, radius * 2.35, radius * .78); context.fill(); context.stroke();
-      context.fillStyle = "rgba(255,255,255,.19)"; context.beginPath(); context.ellipse(-radius * .34, -radius * .73, radius * .2, radius * .4, -.45, 0, Math.PI * 2); context.fill();
-      context.fillStyle = "#ffffff"; context.beginPath(); context.ellipse(0, -radius * .46, radius * .65, radius * .46, 0, 0, Math.PI * 2); context.fill();
-      context.fillStyle = "#170831"; context.beginPath(); context.ellipse(-radius * .21, -radius * .47, radius * .085, radius * .15, 0, 0, Math.PI * 2); context.ellipse(radius * .21, -radius * .47, radius * .085, radius * .15, 0, 0, Math.PI * 2); context.fill();
+      const definition = getCharacter(characterId);
+      const image = characterImages.get(definition.id);
+      const moving = state === "locomotion";
+      const bob = moving ? Math.abs(Math.sin(time * 9 + hash(name))) * radius * .14 : Math.sin(time * 2.4 + hash(name)) * radius * .035;
+      let angle = moving ? Math.sin(time * 8) * .055 : 0;
+      let scaleX = 1, scaleY = 1, offsetY = -bob;
+      if (state === "jump") { scaleX = .94; scaleY = 1.06; offsetY -= radius * .12; }
+      if (state === "fall") { angle = .1; scaleX = 1.04; scaleY = .96; }
+      if (state === "land") { scaleX = 1.1; scaleY = .86; offsetY += radius * .09; }
+      if (state === "dash") { angle = Math.max(-.16, Math.min(.16, p.vx / 1800)); scaleX = 1.09; scaleY = .91; }
+      if (state === "hit") { angle = Math.sin(time * 45) * .14; scaleX = 1.08; scaleY = .9; }
+      if (state === "respawn") { const phase = 1 - Math.min(1, p.respawnTime / .7); scaleX = scaleY = .35 + phase * .65; }
+
+      context.save(); context.globalAlpha = alpha;
+      context.fillStyle = "rgba(12,4,35,.3)"; context.beginPath(); context.ellipse(x + 4, y + radius * 1.2, radius * .92, radius * .27, 0, 0, Math.PI * 2); context.fill();
+      context.translate(x, y + offsetY); context.rotate(angle); context.scale(scaleX, scaleY);
+      const width = radius * 2.05, height = radius * 2.72, left = -width / 2, top = -height * .72;
+      context.beginPath(); context.roundRect(left, top, width, height, radius * .48); context.clip();
+      if (image?.complete && image.naturalWidth > 0) context.drawImage(image, left, top, width, height);
+      else { context.fillStyle = definition.accent; context.fillRect(left, top, width, height); context.fillStyle = "#fff"; context.font = `900 ${radius * .6}px system-ui`; context.textAlign = "center"; context.fillText(definition.displayName.slice(0, 1), 0, radius * .15); }
       context.restore();
-      context.globalAlpha = alpha; context.font = `900 ${Math.max(9, radius * .36)}px system-ui`; context.textAlign = "center"; context.strokeStyle = "#15062f"; context.lineWidth = 5; context.strokeText(name, x, y - radius * 1.72 - bob); context.fillStyle = isMe ? "#ffe14a" : "#ffffff"; context.fillText(name, x, y - radius * 1.72 - bob); context.globalAlpha = 1;
+      context.save(); context.globalAlpha = alpha; context.strokeStyle = isMe ? "#ffe14a" : "#ffffff"; context.lineWidth = Math.max(2, radius * .11); context.beginPath(); context.roundRect(x - width / 2, y + offsetY - height * .72, width, height, radius * .48); context.stroke(); context.restore();
+      context.globalAlpha = alpha; context.font = `900 ${Math.max(9, radius * .36)}px system-ui`; context.textAlign = "center"; context.strokeStyle = "#15062f"; context.lineWidth = 5; context.strokeText(name, x, y + offsetY - height * .86); context.fillStyle = isMe ? "#ffe14a" : "#ffffff"; context.fillText(name, x, y + offsetY - height * .86); context.globalAlpha = 1;
     }
 
     function colorMix(color: string, mix: string, amount: number) {
@@ -1284,7 +1323,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       if (audioRef.current === audio) audioRef.current = null;
       removeEventListener("keydown", down); removeEventListener("keyup", up); removeEventListener("pointerdown", unlockAudio); removeEventListener("resize", resize);
     };
-  }, [map.id, map.accent, map.floor, map.sky, me.color, me.id, me.name, round, startedAt, isSurvival, map.start]);
+  }, [map.id, map.accent, map.floor, map.sky, me.characterId, me.id, me.name, round, startedAt, isSurvival, map.start]);
 
   function pointerAxis(event: React.PointerEvent<HTMLDivElement>) {
     const rect = event.currentTarget.getBoundingClientRect();

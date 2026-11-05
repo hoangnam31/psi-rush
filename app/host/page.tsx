@@ -1,9 +1,10 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { WobbleLogo } from "../../components/WobbleLogo";
 import { Bean } from "../../components/Bean";
 import { RoomTrack } from "../../components/RoomTrack";
-import { COLORS, getMapMode, MAPS } from "../../lib/game";
+import { getMapMode, MAPS } from "../../lib/game";
+import { getCharacter } from "../../lib/characters";
 import { getRoomState, roomAction, type RoomState } from "../../lib/types";
 
 type HostSession = { code: string; hostToken: string };
@@ -65,7 +66,7 @@ export default function HostPage() {
     <header className="admin-topbar"><WobbleLogo compact/><div className="admin-room"><small>ROOM CODE</small><b>{room.code}</b><button onClick={()=>navigator.clipboard.writeText(joinUrl)}>COPY LINK</button></div><div className="admin-status"><i className={room.status}/><span>ROUND {room.currentRound || 0}/{room.totalRounds}</span><b>{players.length}/{room.maxPlayers}</b><button className="icon-btn" onClick={leave}>×</button></div></header>
     {room.status==="waiting"&&<section className="admin-lobby">
       <div className="join-stage"><div className="join-copy"><span className="eyebrow">PHÒNG ĐANG MỞ</span><h2>QUÉT ĐỂ<br/><em>THAM GIA</em></h2><p>Hoặc truy cập đường link và nhập mã phòng</p><div className="giant-code">{room.code}</div></div><div className="qr-frame"><img src={`https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=12&data=${encodeURIComponent(joinUrl)}`} alt={`QR tham gia phòng ${room.code}`}/><span>SCAN ME</span></div></div>
-      <aside className="lobby-roster"><div className="section-head"><div><small>PLAYERS</small><h3>ĐÃ THAM GIA</h3></div><b>{players.length}<i>/{room.maxPlayers}</i></b></div><div className="roster-grid">{players.map((p,i)=><div className="roster-player" key={p.id}><Bean color={p.color} size="sm"/><span><b>{p.name}</b><small>{p.isReady?"SẴN SÀNG":"ĐANG CHỜ"}</small></span><i>{String(i+1).padStart(2,"0")}</i></div>)}{!players.length&&<div className="empty-roster">Chưa có ai trong phòng.<br/>Hãy chiếu mã QR lên màn hình lớn!</div>}</div><button className="start-btn" disabled={!players.length||busy} onClick={()=>act("start")}>BẮT ĐẦU ROUND 1 <span>▶</span></button></aside>
+      <aside className="lobby-roster"><div className="section-head"><div><small>PLAYERS</small><h3>ĐÃ THAM GIA</h3></div><b>{players.length}<i>/{room.maxPlayers}</i></b></div><div className="roster-grid">{players.map((p,i)=><div className="roster-player" key={p.id}><Bean characterId={p.characterId} size="sm"/><span><b>{p.name}</b><small>{p.isReady?"SẴN SÀNG":"ĐANG CHỜ"}</small></span><i>{String(i+1).padStart(2,"0")}</i></div>)}{!players.length&&<div className="empty-roster">Chưa có ai trong phòng.<br/>Hãy chiếu mã QR lên màn hình lớn!</div>}</div><button className="start-btn" disabled={!players.length||busy} onClick={()=>act("start")}>BẮT ĐẦU ROUND 1 <span>▶</span></button></aside>
     </section>}
     {room.status==="racing"&&<section className="race-admin-grid">
       <div className="spectator-panel"><div className="panel-title"><div><small>{mode==="survival"?"LIVE SPECTATOR":"LIVE RACE ORDER"}</small><h2>{mode==="survival"?"TOÀN CẢNH SINH TỒN":"TIẾN ĐỘ ĐƯỜNG ĐUA"}</h2></div><span className="live-badge"><i/> LIVE</span></div><RoomTrack players={players} mapId={room.currentMap} round={room.currentRound} startedAt={room.updatedAt}/><div className="race-actions"><button className="danger-action" disabled={busy} onClick={()=>act("endRound")}>CHỐT KẾT QUẢ ROUND</button></div></div>
@@ -81,8 +82,8 @@ export default function HostPage() {
 
 function Leaderboard({players,currentResults,title,mode}:{players:RoomState["players"];currentResults:RoomState["results"];title:string;mode:"race"|"survival"}){
   const points=new Map(currentResults.map(r=>[r.playerId,r.points]));
-  return <aside className="leaderboard"><div className="section-head"><div><small>LEADERBOARD</small><h3>{title}</h3></div><span>PTS</span></div><div className="leader-list">{players.map((p,i)=><div className={`leader-row ${i<3?`top top-${i+1}`:""}`} key={p.id}><b className="rank-no">{i+1}</b><span className="color-dot" style={{background:p.color}}/><div><b>{p.name}</b><small>{mode==="survival"?(p.finishPosition?`Hạng sinh tồn #${p.finishPosition}`:"● CÒN TRỤ"):p.finishPosition?`Về đích #${p.finishPosition}`:`${Math.round(p.progress)}% đường đua`}</small></div>{points.has(p.id)&&<em>+{points.get(p.id)}</em>}<strong>{p.score}</strong></div>)}</div></aside>
+  return <aside className="leaderboard"><div className="section-head"><div><small>LEADERBOARD</small><h3>{title}</h3></div><span>PTS</span></div><div className="leader-list">{players.map((p,i)=><div className={`leader-row ${i<3?`top top-${i+1}`:""}`} key={p.id}><b className="rank-no">{i+1}</b><span className="character-dot" style={{backgroundImage:`url(${getCharacter(p.characterId).image})`}}/><div><b>{p.name}</b><small>{mode==="survival"?(p.finishPosition?`Hạng sinh tồn #${p.finishPosition}`:"● CÒN TRỤ"):p.finishPosition?`Về đích #${p.finishPosition}`:`${Math.round(p.progress)}% đường đua`}</small></div>{points.has(p.id)&&<em>+{points.get(p.id)}</em>}<strong>{p.score}</strong></div>)}</div></aside>
 }
 function Podium({players}:{players:RoomState["players"]}){
-  const order=[players[1],players[0],players[2]];return <div className="podium">{order.map((p,i)=>p?<div className={`podium-slot place-${[2,1,3][i]}`} key={p.id}><Bean color={p.color} size={i===1?"lg":"md"} name={p.name} crown={i===1}/><div><b>#{[2,1,3][i]}</b><span>{p.score} PTS</span></div></div>:<div key={i}/>)}</div>
+  const order=[players[1],players[0],players[2]];return <div className="podium">{order.map((p,i)=>p?<div className={`podium-slot place-${[2,1,3][i]}`} key={p.id}><Bean characterId={p.characterId} size={i===1?"lg":"md"} name={p.name} crown={i===1}/><div><b>#{[2,1,3][i]}</b><span>{p.score} PTS</span></div></div>:<div key={i}/>)}</div>
 }

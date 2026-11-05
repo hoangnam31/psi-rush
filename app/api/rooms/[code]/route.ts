@@ -2,6 +2,7 @@ import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { getDb } from "../../../../db";
 import { players, rooms, roundResults } from "../../../../db/schema";
 import { courseWidthForPlayers, getMapMode, pickMap, scoreForPosition } from "../../../../lib/game";
+import { getCharacter, isCharacterId } from "../../../../lib/characters";
 
 type Context = { params: Promise<{ code: string }> };
 
@@ -30,7 +31,7 @@ type RoomRow = NonNullable<Awaited<ReturnType<typeof getRoom>>>;
 async function getRoomPayload(room: RoomRow, isHost: boolean, includeResults = true) {
   const db = getDb();
   const roster = await retryDb(() => db.select({
-    id: players.id, name: players.name, color: players.color, score: players.score,
+    id: players.id, name: players.name, characterId: players.characterId, color: players.color, score: players.score,
     progress: players.progress, positionX: players.positionX, finishPosition: players.finishPosition,
     isReady: players.isReady,
   }).from(players).where(eq(players.roomId, room.id)).orderBy(asc(players.name)));
@@ -92,7 +93,8 @@ export async function POST(request: Request, context: Context) {
       if (count >= room.maxPlayers) return Response.json({ error: "Phòng đã đầy" }, { status: 409 });
       const name = String(body.name || "").trim().slice(0, 16);
       if (!name) return Response.json({ error: "Hãy nhập tên người chơi" }, { status: 400 });
-      const player = { id: crypto.randomUUID(), roomId: room.id, token: crypto.randomUUID(), name, color: String(body.color || "#8b5cf6") };
+      const characterId = isCharacterId(body.characterId) ? body.characterId : getCharacter().id;
+      const player = { id: crypto.randomUUID(), roomId: room.id, token: crypto.randomUUID(), name, characterId, color: getCharacter(characterId).accent };
       try { await db.insert(players).values(player); }
       catch { return Response.json({ error: "Tên này đã có trong phòng" }, { status: 409 }); }
       return Response.json({ playerId: player.id, playerToken: player.token, roomCode: room.code }, { status: 201 });

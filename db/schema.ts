@@ -22,6 +22,7 @@ export const players = pgTable("players", {
   roomId: text("room_id").notNull().references(() => rooms.id, { onDelete: "cascade" }),
   token: text("token").notNull(),
   name: text("name").notNull(),
+  characterId: text("character_id").notNull().default("corgi_scout"),
   color: text("color").notNull().default("#8b5cf6"),
   score: integer("score").notNull().default(0),
   progress: real("progress").notNull().default(0),
