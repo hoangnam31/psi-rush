@@ -16,7 +16,7 @@ export default function PlayPage(){
   const refresh=useCallback(async()=>{if(!code)return;try{setState(await getRoomState(code));setError("")}catch(e){setError(e instanceof Error?e.message:"Mất kết nối")}},[code]);
   const me=useMemo(()=>state?.players.find(p=>p.id===session?.playerId),[state,session]);
   const activelyRacing=Boolean(state?.room.status==="racing"&&!finish&&me&&!me.finishPosition);
-  useEffect(()=>{refresh();const crowded=Boolean(state&&state.players.length>100);const delay=activelyRacing?(crowded?850:650):crowded?1000:650;const id=setInterval(refresh,delay);return()=>clearInterval(id)},[refresh,activelyRacing,state?.players.length]);
+  useEffect(()=>{refresh();const count=state?.players.length||0;const delay=activelyRacing?(count>100?2000:count>50?1200:650):count>100?1200:count>50?900:650;const id=setInterval(refresh,delay);return()=>clearInterval(id)},[refresh,activelyRacing,state?.players.length]);
   const sendProgress=useCallback((progress:number,positionX:number)=>{
     if(!session||syncPending.current)return;syncPending.current=true;
     roomAction(code,{action:"progress",playerId:session.playerId,playerToken:session.playerToken,progress,positionX})

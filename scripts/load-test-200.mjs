@@ -8,9 +8,9 @@ const args = new Map(process.argv.slice(2).map((value) => {
 const baseUrl = (args.get("url") || "http://127.0.0.1:5173").replace(/\/$/, "");
 const playerCount = Math.max(2, Math.min(200, Number(args.get("players") || 200)));
 const durationSeconds = Math.max(5, Number(args.get("duration") || 20));
-const joinConcurrency = Math.max(1, Number(args.get("join-concurrency") || 20));
-const stateInterval = Math.max(250, Number(args.get("state-interval") || 850));
-const progressInterval = Math.max(250, Number(args.get("progress-interval") || 1000));
+const joinConcurrency = Math.max(1, Number(args.get("join-concurrency") || 5));
+const stateInterval = Math.max(250, Number(args.get("state-interval") || 2000));
+const progressInterval = Math.max(250, Number(args.get("progress-interval") || 2000));
 const requestTimeout = Math.max(1000, Number(args.get("timeout") || 10_000));
 const runId = Date.now().toString(36).slice(-7);
 const metrics = new Map();

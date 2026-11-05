@@ -391,7 +391,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
           state.vy = Math.max(-650, Math.min(900, (targetY - state.targetY) / sampleTime));
           state.targetX = targetX; state.targetY = targetY; state.targetAt = now;
         }
-        const predictionHorizon = playersRef.current.length > 100 ? .8 : .32;
+        const predictionHorizon = playersRef.current.length > 100 ? 1.8 : playersRef.current.length > 50 ? 1 : .32;
         const predictionTime = Math.min(predictionHorizon, Math.max(0, (now - state.targetAt) / 1000));
         const predictedX = state.targetX + state.vx * predictionTime;
         const predictedY = state.targetY + state.vy * predictionTime;
@@ -776,7 +776,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       shake = Math.max(0, shake - dt * 3.4);
 
       const progress = Math.max(0, Math.min(100, p.y / COURSE * 100));
-      const syncDelay = playersRef.current.length > 100 ? 1000 : playersRef.current.length > 50 ? 750 : 400;
+      const syncDelay = playersRef.current.length > 100 ? 2000 : playersRef.current.length > 50 ? 1200 : 400;
       if (now - lastSync > syncDelay) { lastSync = now; progressCb.current(progress, p.x); }
       if (now - lastUi > 80) {
         lastUi = now;
