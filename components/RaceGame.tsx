@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { BASE_COURSE_WIDTH, courseWidthForPlayers, MAPS, survivalSizeForPlayers } from "../lib/game";
 import { GameAudio } from "../lib/game-audio";
+import { blockStormWaveAt } from "../lib/block-storm";
 import { tileCollapseState } from "../lib/tile-collapse";
 import type { Player } from "../lib/types";
 
@@ -494,46 +495,35 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
     }
 
     function getSweepRects(time: number): SweepRect[] {
-      if (map.id !== "sweep" || !survivalZone || time < 2) return [];
+      if (map.id !== "sweep" || !survivalZone) return [];
+      const wave = blockStormWaveAt(time, round);
+      if (!wave) return [];
       const rects: SweepRect[] = [];
-      const cadence = 3.3;
-      const currentWave = Math.floor((time - 2) / cadence);
-      for (let wave = Math.max(0, currentWave - 3); wave <= currentWave; wave++) {
-        const startAt = 2 + wave * cadence;
-        const duration = Math.max(3.25, 6.2 - wave * .075);
-        const copies = 1 + Math.min(2, Math.floor(wave / 9));
-        for (let copy = 0; copy < copies; copy++) {
-          const progress = (time - startAt - copy * .5) / duration;
-          if (progress < 0 || progress > 1) continue;
-          const direction = (wave + copy) % 4;
-          const low = (wave + copy * 2) % 3 === 0;
-          const gapSize = Math.max(210, Math.min(survivalZone.w, survivalZone.h) * Math.max(.14, .27 - wave * .004));
-          const gapOffset = ((stableHash(`${round}:${wave}:${copy}`) % 1000) / 1000 - .5) * .42;
-          const thickness = 92 + Math.min(55, wave * 2.4);
-          const horizontalTravel = direction === 0 || direction === 2;
-          if (horizontalTravel) {
-            const from = direction === 0 ? survivalZone.x - thickness : survivalZone.x + survivalZone.w + thickness;
-            const to = direction === 0 ? survivalZone.x + survivalZone.w + thickness : survivalZone.x - thickness;
-            const x = from + (to - from) * progress;
-            const gapCenter = survivalZone.y + survivalZone.h * (.5 + gapOffset);
-            const vx = (to - from) / duration;
-            if (low) rects.push({ x, y: survivalZone.y, w: thickness, h: survivalZone.h, low: true, color: "#ff4fa3", vx, vy: 0 });
-            else {
-              rects.push({ x, y: survivalZone.y, w: thickness, h: Math.max(0, gapCenter - gapSize / 2 - survivalZone.y), low: false, color: "#8f6cff", vx, vy: 0 });
-              rects.push({ x, y: gapCenter + gapSize / 2, w: thickness, h: Math.max(0, survivalZone.y + survivalZone.h - gapCenter - gapSize / 2), low: false, color: "#8f6cff", vx, vy: 0 });
-            }
-          } else {
-            const from = direction === 1 ? survivalZone.y - thickness : survivalZone.y + survivalZone.h + thickness;
-            const to = direction === 1 ? survivalZone.y + survivalZone.h + thickness : survivalZone.y - thickness;
-            const y = from + (to - from) * progress;
-            const gapCenter = survivalZone.x + survivalZone.w * (.5 + gapOffset);
-            const vy = (to - from) / duration;
-            if (low) rects.push({ x: survivalZone.x, y, w: survivalZone.w, h: thickness, low: true, color: "#ffcf4d", vx: 0, vy });
-            else {
-              rects.push({ x: survivalZone.x, y, w: Math.max(0, gapCenter - gapSize / 2 - survivalZone.x), h: thickness, low: false, color: "#35dcff", vx: 0, vy });
-              rects.push({ x: gapCenter + gapSize / 2, y, w: Math.max(0, survivalZone.x + survivalZone.w - gapCenter - gapSize / 2), h: thickness, low: false, color: "#35dcff", vx: 0, vy });
-            }
-          }
+      const { direction, duration, progress, low, gapCenterRatio, gapSizeRatio } = wave;
+      const gapSize = Math.min(survivalZone.w, survivalZone.h) * gapSizeRatio;
+      const thickness = 104;
+      const horizontalTravel = direction === 0 || direction === 2;
+      if (horizontalTravel) {
+        const from = direction === 0 ? survivalZone.x - thickness : survivalZone.x + survivalZone.w + thickness;
+        const to = direction === 0 ? survivalZone.x + survivalZone.w + thickness : survivalZone.x - thickness;
+        const x = from + (to - from) * progress;
+        const gapCenter = survivalZone.y + survivalZone.h * gapCenterRatio;
+        const vx = (to - from) / duration;
+        if (low) rects.push({ x, y: survivalZone.y, w: thickness, h: survivalZone.h, low: true, color: "#ff4fa3", vx, vy: 0 });
+        else {
+          rects.push({ x, y: survivalZone.y, w: thickness, h: Math.max(0, gapCenter - gapSize / 2 - survivalZone.y), low: false, color: "#8f6cff", vx, vy: 0 });
+          rects.push({ x, y: gapCenter + gapSize / 2, w: thickness, h: Math.max(0, survivalZone.y + survivalZone.h - gapCenter - gapSize / 2), low: false, color: "#8f6cff", vx, vy: 0 });
+        }
+      } else {
+        const from = direction === 1 ? survivalZone.y - thickness : survivalZone.y + survivalZone.h + thickness;
+        const to = direction === 1 ? survivalZone.y + survivalZone.h + thickness : survivalZone.y - thickness;
+        const y = from + (to - from) * progress;
+        const gapCenter = survivalZone.x + survivalZone.w * gapCenterRatio;
+        const vy = (to - from) / duration;
+        if (low) rects.push({ x: survivalZone.x, y, w: survivalZone.w, h: thickness, low: true, color: "#ffcf4d", vx: 0, vy });
+        else {
+          rects.push({ x: survivalZone.x, y, w: Math.max(0, gapCenter - gapSize / 2 - survivalZone.x), h: thickness, low: false, color: "#35dcff", vx: 0, vy });
+          rects.push({ x: gapCenter + gapSize / 2, y, w: Math.max(0, survivalZone.x + survivalZone.w - gapCenter - gapSize / 2), h: thickness, low: false, color: "#35dcff", vx: 0, vy });
         }
       }
       return rects;

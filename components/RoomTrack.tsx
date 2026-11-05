@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { courseWidthForPlayers, MAPS, survivalSizeForPlayers } from "../lib/game";
+import { blockStormWaveAt } from "../lib/block-storm";
 import { TILE_COUNT, tileCollapseState } from "../lib/tile-collapse";
 import type { Player } from "../lib/types";
 
@@ -122,10 +123,13 @@ export function RoomTrack({ players, mapId, round, startedAt }: { players: Playe
     return () => window.clearInterval(timer);
   }, [startedAt, round]);
 
+  if (map.mode === "race") {
+    return <RaceProgressTrack players={players} map={map}/>;
+  }
+
   return <div className={`spectator-track admin-map-${map.id}`} style={{ "--sky": map.sky, "--floor": map.floor, "--accent": map.accent } as React.CSSProperties}>
     <div className="track-cloud c1"/><div className="track-cloud c2"/>
-    <div className={`track-lane ${map.mode === "survival" ? "survival-layout" : "race-layout"}`}>
-      {map.mode === "race" && <div className="finish-line"><b>FINISH</b></div>}
+    <div className="track-lane survival-layout">
       <MapFeatures mapId={map.id} round={round} roundSeconds={roundSeconds} playerCount={players.length} courseWidth={courseWidth}/>
       {players.map((player) => {
         const position = displayed.current.get(player.id) ?? targets.current.get(player.id) ?? { progress: 2, lane: stableLane(player.id) };
@@ -138,12 +142,54 @@ export function RoomTrack({ players, mapId, round, startedAt }: { players: Playe
           <span>{player.name}</span><i><b/><b/></i>
         </div>;
       })}
-      {map.mode === "race"
-        ? <div className="start-line">START</div>
-        : <div className="survival-counter">CÒN TRỤ {players.filter((player) => !player.finishPosition).length}/{players.length}</div>}
+      <div className="survival-counter">CÒN TRỤ {players.filter((player) => !player.finishPosition).length}/{players.length}</div>
     </div>
     <div className="realtime-chip"><i/> LIVE · TỌA ĐỘ THỰC</div>
     <div className="map-plaque"><small>ROUND MAP</small><b>{map.name}</b><span>{map.subtitle}</span></div>
+  </div>;
+}
+
+type RaceMap = (typeof MAPS)[number];
+
+function RaceProgressTrack({ players, map }: { players: Player[]; map: RaceMap }) {
+  const ordered = [...players].sort((a, b) => {
+    if (a.finishPosition && b.finishPosition) return a.finishPosition - b.finishPosition;
+    if (a.finishPosition) return -1;
+    if (b.finishPosition) return 1;
+    return b.progress - a.progress || a.name.localeCompare(b.name, "vi");
+  });
+  const rankById = new Map(ordered.map((player, index) => [player.id, index]));
+  const leader = ordered[0];
+  const rowHeight = players.length > 100 ? 46 : players.length > 50 ? 50 : 56;
+
+  return <div className="spectator-track race-progress-track" style={{ "--sky": map.sky, "--floor": map.floor, "--accent": map.accent, "--race-row-height": `${rowHeight}px` } as React.CSSProperties}>
+    <div className="race-progress-glow"/>
+    <div className="race-progress-summary">
+      <div><small>ROUND MAP · LIVE PROGRESS</small><b>{map.name}</b><span>{map.subtitle}</span></div>
+      <div className="race-leader-chip"><small>ĐANG DẪN ĐẦU</small><b><i style={{ background: leader?.color }}/>{leader?.name ?? "—"}</b><span>{leader ? `${Math.round(leader.progress)}%` : "0%"}</span></div>
+    </div>
+    <div className="race-progress-scroll">
+      <div className="race-progress-scale">
+        <span>START</span><i/><span>25%</span><i/><span>50%</span><i/><span>75%</span><i/><strong>FINISH</strong>
+      </div>
+      <div className="race-progress-list" style={{ height: `${Math.max(players.length, 1) * rowHeight}px` }}>
+        {players.map((player) => {
+          const rank = rankById.get(player.id) ?? players.length;
+          const progress = player.finishPosition ? 100 : clamp(player.progress / 100) * 100;
+          return <div className={`race-progress-row ${player.finishPosition ? "finished" : ""} ${rank < 3 ? `top-${rank + 1}` : ""}`} key={player.id} style={{ transform: `translateY(${rank * rowHeight}px)` }}>
+            <b className="race-live-rank">#{rank + 1}</b>
+            <div className="race-player-label"><i style={{ "--bean": player.color } as React.CSSProperties}><b/><b/></i><span><strong>{player.name}</strong><small>{player.finishPosition ? `VỀ ĐÍCH #${player.finishPosition}` : rank === 0 ? "ĐANG DẪN ĐẦU" : `CÁCH ĐÍCH ${Math.max(0, Math.round(100 - progress))}%`}</small></span></div>
+            <div className="race-progress-rail">
+              <i className="race-progress-fill" style={{ width: `${progress}%`, background: player.color }}/>
+              <span className="race-progress-marker" style={{ left: `${progress}%`, "--bean": player.color } as React.CSSProperties}><i><b/><b/></i></span>
+            </div>
+            <strong className="race-progress-value">{player.finishPosition ? "✓" : `${Math.round(progress)}%`}</strong>
+          </div>;
+        })}
+        {!players.length && <div className="race-progress-empty">Đang chờ dữ liệu tay đua…</div>}
+      </div>
+    </div>
+    <div className="realtime-chip"><i/> LIVE · THỨ HẠNG TỰ ĐỘNG</div>
   </div>;
 }
 
@@ -191,13 +237,25 @@ function MapFeatures({ mapId, round, roundSeconds, courseWidth }: { mapId: strin
   </div>;
 
   if (mapId === "sweep") {
-    const count = 1 + Math.min(2, Math.floor(roundSeconds / 22));
-    const wave = Math.max(0, Math.floor((roundSeconds - 2) / 3.3));
+    const wave = blockStormWaveAt(roundSeconds, round);
+    const horizontalTravel = wave ? wave.direction === 0 || wave.direction === 2 : true;
+    const reverse = wave ? wave.direction === 2 || wave.direction === 3 : false;
+    const travel = wave ? (reverse ? 110 - wave.progress * 120 : -10 + wave.progress * 120) : -14;
+    const gapStart = wave ? (wave.gapCenterRatio - wave.gapSizeRatio / 2) * 100 : 36.5;
+    const gapEnd = wave ? (wave.gapCenterRatio + wave.gapSizeRatio / 2) * 100 : 63.5;
+    const barrierStyle = horizontalTravel
+      ? { animation: "none", left: `${travel}%`, top: 0 }
+      : { animation: "none", top: `${travel}%`, left: 0 };
+    const firstSegment = horizontalTravel
+      ? { top: 0, left: 0, width: "100%", height: `${gapStart}%` }
+      : { top: 0, left: 0, width: `${gapStart}%`, height: "100%" };
+    const secondSegment = horizontalTravel
+      ? { bottom: 0, left: 0, width: "100%", height: `${100 - gapEnd}%` }
+      : { top: 0, right: 0, width: `${100 - gapEnd}%`, height: "100%" };
     return <div className="admin-sweep-course" aria-hidden="true"><i className="admin-sweep-platform">
-      {Array.from({ length: count }, (_, index) => {
-        const low = (wave + index * 2) % 3 === 0;
-        return <b className={`${index % 2 ? "vertical" : "horizontal"} ${low ? "low" : "high"}`} style={{ animationDuration: `${Math.max(1.8, 4.8 - roundSeconds * .025 + index * .35)}s` }} key={index}><i/><i/></b>;
-      })}
+      {wave && <b className={`${horizontalTravel ? "vertical" : "horizontal"} ${wave.low ? "low" : "high"}`} style={barrierStyle}>
+        <i style={wave.low ? undefined : firstSegment}/><i style={wave.low ? undefined : secondSegment}/>
+      </b>}
     </i></div>;
   }
 
