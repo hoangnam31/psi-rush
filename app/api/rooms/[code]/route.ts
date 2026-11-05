@@ -46,16 +46,28 @@ async function getRoomPayload(room: RoomRow, isHost: boolean, includeResults = t
 
 export async function GET(request: Request, context: Context) {
   try {
+    const edgeCache = (globalThis as unknown as { caches?: { default?: Cache } }).caches?.default;
+    const cacheKey = new Request(request.url, { method: "GET" });
+    if (edgeCache) {
+      const cached = await edgeCache.match(cacheKey);
+      if (cached) {
+        const hit = new Response(cached.body, cached);
+        hit.headers.set("x-psi-cache", "HIT");
+        return hit;
+      }
+    }
     const { code } = await context.params; const room = await getRoom(code);
     if (!room) return Response.json({ error: "Không tìm thấy phòng" }, { status: 404 });
     const hostToken = new URL(request.url).searchParams.get("hostToken");
-    return Response.json(await getRoomPayload(room, hostToken === room.hostToken, room.status !== "waiting"), {
+    const response = Response.json(await getRoomPayload(room, hostToken === room.hostToken, room.status !== "waiting"), {
       // Hundreds of players request the same roster. A one-second edge cache
       // turns those reads into one D1 snapshot per edge instead of hundreds
       // of identical database queries, while remote interpolation hides the
       // deliberately short staleness window.
-      headers: { "cache-control": "public, max-age=0, s-maxage=1, stale-while-revalidate=1" },
+      headers: { "cache-control": "public, max-age=0, s-maxage=1", "x-psi-cache": "MISS" },
     });
+    if (edgeCache) await edgeCache.put(cacheKey, response.clone()).catch(() => {});
+    return response;
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Không thể tải phòng" }, { status: 500 });
   }
@@ -63,10 +75,30 @@ export async function GET(request: Request, context: Context) {
 
 export async function POST(request: Request, context: Context) {
   try {
-    const { code } = await context.params; const room = await getRoom(code);
-    if (!room) return Response.json({ error: "Mã phòng không tồn tại" }, { status: 404 });
     const body = await request.json() as Record<string, unknown>;
     const action = String(body.action || ""); const db = getDb();
+    const playerId = String(body.playerId || ""), playerToken = String(body.playerToken || "");
+
+    // High-frequency player updates authenticate directly with the player's
+    // opaque id/token. They do not need a room lookup first, removing one D1
+    // read from every position write in a 200-player match.
+    if (action === "progress") {
+      const progress = Math.max(0, Math.min(99.8, Number(body.progress) || 0));
+      const positionX = Math.max(-120, Math.min(3120, Number(body.positionX) || 800));
+      await retryDb(() => db.update(players).set({ progress, positionX, lastSeenAt: sql`CURRENT_TIMESTAMP` }).where(and(
+        eq(players.id, playerId), eq(players.token, playerToken),
+      )));
+      return Response.json({ ok: true });
+    }
+    if (action === "ready") {
+      await retryDb(() => db.update(players).set({ isReady: Boolean(body.ready), lastSeenAt: sql`CURRENT_TIMESTAMP` }).where(and(
+        eq(players.id, playerId), eq(players.token, playerToken),
+      )));
+      return Response.json({ ok: true });
+    }
+
+    const { code } = await context.params; const room = await getRoom(code);
+    if (!room) return Response.json({ error: "Mã phòng không tồn tại" }, { status: 404 });
 
     if (action === "join") {
       if (room.status !== "waiting") return Response.json({ error: "Trận đấu đã bắt đầu" }, { status: 409 });
@@ -117,21 +149,6 @@ export async function POST(request: Request, context: Context) {
       return Response.json({ ok: true });
     }
 
-    const playerId = String(body.playerId || ""), playerToken = String(body.playerToken || "");
-    if (action === "progress") {
-      const progress = Math.max(0, Math.min(99.8, Number(body.progress) || 0));
-      const positionX = Math.max(-120, Math.min(3120, Number(body.positionX) || 800));
-      await retryDb(() => db.update(players).set({ progress, positionX, lastSeenAt: sql`CURRENT_TIMESTAMP` }).where(and(
-        eq(players.id, playerId), eq(players.roomId, room.id), eq(players.token, playerToken),
-      )));
-      return Response.json({ ok: true });
-    }
-    if (action === "ready") {
-      await retryDb(() => db.update(players).set({ isReady: Boolean(body.ready), lastSeenAt: sql`CURRENT_TIMESTAMP` }).where(and(
-        eq(players.id, playerId), eq(players.roomId, room.id), eq(players.token, playerToken),
-      )));
-      return Response.json({ ok: true });
-    }
     const player = (await db.select().from(players).where(and(eq(players.id, playerId), eq(players.roomId, room.id), eq(players.token, playerToken))).limit(1))[0];
     if (!player) return Response.json({ error: "Phiên người chơi không hợp lệ" }, { status: 403 });
     if (action === "finish") {
