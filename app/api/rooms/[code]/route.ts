@@ -33,7 +33,7 @@ async function getRoomPayload(room: RoomRow, isHost: boolean, includeResults = t
     id: players.id, name: players.name, color: players.color, score: players.score,
     progress: players.progress, positionX: players.positionX, finishPosition: players.finishPosition,
     isReady: players.isReady,
-  }).from(players).where(eq(players.roomId, room.id)).orderBy(desc(players.score), desc(players.progress)));
+  }).from(players).where(eq(players.roomId, room.id)).orderBy(asc(players.name)));
   const results = includeResults
     ? await retryDb(() => db.select().from(roundResults).where(eq(roundResults.roomId, room.id)).orderBy(desc(roundResults.roundNumber), asc(roundResults.position)))
     : [];
@@ -46,28 +46,14 @@ async function getRoomPayload(room: RoomRow, isHost: boolean, includeResults = t
 
 export async function GET(request: Request, context: Context) {
   try {
-    const edgeCache = (globalThis as unknown as { caches?: { default?: Cache } }).caches?.default;
-    const cacheKey = new Request(request.url, { method: "GET" });
-    if (edgeCache) {
-      const cached = await edgeCache.match(cacheKey);
-      if (cached) {
-        const hit = new Response(cached.body, cached);
-        hit.headers.set("x-psi-cache", "HIT");
-        return hit;
-      }
-    }
     const { code } = await context.params; const room = await getRoom(code);
     if (!room) return Response.json({ error: "Không tìm thấy phòng" }, { status: 404 });
     const hostToken = new URL(request.url).searchParams.get("hostToken");
-    const response = Response.json(await getRoomPayload(room, hostToken === room.hostToken, room.status !== "waiting"), {
-      // Hundreds of players request the same roster. A one-second edge cache
-      // turns those reads into one D1 snapshot per edge instead of hundreds
-      // of identical database queries, while remote interpolation hides the
-      // deliberately short staleness window.
-      headers: { "cache-control": "public, max-age=0, s-maxage=1", "x-psi-cache": "MISS" },
+    const isHost = hostToken === room.hostToken;
+    const includeResults = isHost || room.status === "results" || room.status === "finished";
+    return Response.json(await getRoomPayload(room, isHost, includeResults), {
+      headers: { "cache-control": "public, max-age=0, s-maxage=1" },
     });
-    if (edgeCache) await edgeCache.put(cacheKey, response.clone()).catch(() => {});
-    return response;
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Không thể tải phòng" }, { status: 500 });
   }
