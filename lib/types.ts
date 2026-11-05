@@ -27,7 +27,7 @@ export async function roomAction<T = any>(code: string, payload: Record<string, 
 
 export async function getRoomState(code: string, hostToken?: string): Promise<RoomState> {
   const suffix = hostToken ? `?hostToken=${encodeURIComponent(hostToken)}` : "";
-  const response = await fetch(`/api/rooms/${encodeURIComponent(code)}${suffix}`, { cache: "no-store" });
+  const response = await fetch(`/api/rooms/${encodeURIComponent(code)}${suffix}`);
   const data = await response.json() as RoomState & { error?: string };
   if (!response.ok) throw new Error(data.error || "Không tải được phòng");
   return data;

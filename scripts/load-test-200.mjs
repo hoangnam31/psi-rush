@@ -9,14 +9,14 @@ const baseUrl = (args.get("url") || "http://127.0.0.1:5173").replace(/\/$/, "");
 const playerCount = Math.max(2, Math.min(200, Number(args.get("players") || 200)));
 const durationSeconds = Math.max(5, Number(args.get("duration") || 20));
 const joinConcurrency = Math.max(1, Number(args.get("join-concurrency") || 20));
-const stateInterval = Math.max(250, Number(args.get("state-interval") || 6000));
-const progressInterval = Math.max(250, Number(args.get("progress-interval") || 850));
+const stateInterval = Math.max(250, Number(args.get("state-interval") || 850));
+const progressInterval = Math.max(250, Number(args.get("progress-interval") || 1000));
 const requestTimeout = Math.max(1000, Number(args.get("timeout") || 10_000));
 const runId = Date.now().toString(36).slice(-7);
 const metrics = new Map();
 
 function metric(name) {
-  if (!metrics.has(name)) metrics.set(name, { latencies: [], errors: 0, requests: 0, bytes: 0, statuses: {} });
+  if (!metrics.has(name)) metrics.set(name, { latencies: [], errors: 0, requests: 0, bytes: 0, statuses: {}, errorSamples: [] });
   return metrics.get(name);
 }
 
@@ -36,7 +36,11 @@ async function request(name, path, options, parseJson = true) {
       try { data = JSON.parse(text); }
       catch { throw new Error(`Invalid JSON (${response.status}): ${text.slice(0, 120)}`); }
     }
-    if (!response.ok) throw new Error(`${response.status}: ${data?.error || text.slice(0, 120)}`);
+    if (!response.ok) {
+      const message = `${response.status}: ${data?.error || text.slice(0, 180)}`;
+      if (entry.errorSamples.length < 5) entry.errorSamples.push(message);
+      throw new Error(message);
+    }
     return data;
   } catch (error) {
     entry.errors++;
@@ -78,6 +82,7 @@ function summarize(name, entry) {
     maxMs: Number(Math.max(0, ...entry.latencies).toFixed(1)),
     responseMiB: Number((entry.bytes / 1024 / 1024).toFixed(2)),
     statuses: entry.statuses,
+    errorSamples: entry.errorSamples,
   };
 }
 
@@ -131,7 +136,7 @@ async function main() {
       interval: stateInterval,
       stagger: player.index / playerCount * stateInterval,
       endAt,
-      task: () => request("state", `/api/rooms/${room.code}`, { cache: "no-store" }),
+      task: () => request("state", `/api/rooms/${room.code}`, {}),
     }));
     loops.push(fixedRateLoop({
       interval: progressInterval,

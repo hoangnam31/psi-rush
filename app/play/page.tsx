@@ -6,10 +6,9 @@ import { LobbyMusic } from "../../components/LobbyMusic";
 import { RaceGame } from "../../components/RaceGame";
 import { WobbleLogo } from "../../components/WobbleLogo";
 import { getMapMode } from "../../lib/game";
-import { getRoomState, roomAction, type Player, type Room, type RoomState } from "../../lib/types";
+import { getRoomState, roomAction, type RoomState } from "../../lib/types";
 
 type PlayerSession={playerId:string;playerToken:string;roomCode:string};
-type LiveSync={room:Pick<Room,"status"|"currentRound"|"currentMap"|"updatedAt">;players:Player[]};
 export default function PlayPage(){
   const router=useRouter();const [code,setCode]=useState("");const [session,setSession]=useState<PlayerSession|null>(null);const [state,setState]=useState<RoomState|null>(null);const [error,setError]=useState("");const [finish,setFinish]=useState<{position:number;points:number}|null>(null);
   const syncPending=useRef(false);
@@ -17,13 +16,12 @@ export default function PlayPage(){
   const refresh=useCallback(async()=>{if(!code)return;try{setState(await getRoomState(code));setError("")}catch(e){setError(e instanceof Error?e.message:"Mất kết nối")}},[code]);
   const me=useMemo(()=>state?.players.find(p=>p.id===session?.playerId),[state,session]);
   const activelyRacing=Boolean(state?.room.status==="racing"&&!finish&&me&&!me.finishPosition);
-  useEffect(()=>{refresh();const delay=activelyRacing?6000:state&&state.players.length>100?1000:650;const id=setInterval(refresh,delay);return()=>clearInterval(id)},[refresh,activelyRacing,state?.players.length]);
+  useEffect(()=>{refresh();const crowded=Boolean(state&&state.players.length>100);const delay=activelyRacing?(crowded?850:650):crowded?1000:650;const id=setInterval(refresh,delay);return()=>clearInterval(id)},[refresh,activelyRacing,state?.players.length]);
   const sendProgress=useCallback((progress:number,positionX:number)=>{
     if(!session||syncPending.current)return;syncPending.current=true;
-    roomAction<LiveSync>(code,{action:"progress",playerId:session.playerId,playerToken:session.playerToken,progress,positionX})
-      .then(next=>{setState(current=>current?{...current,room:{...current.room,...next.room},players:next.players}:current);setError("");if(next.room.status!=="racing")void refresh()})
+    roomAction(code,{action:"progress",playerId:session.playerId,playerToken:session.playerToken,progress,positionX})
       .catch(()=>{}).finally(()=>{syncPending.current=false});
-  },[code,session,refresh]);
+  },[code,session]);
   const sendFinish=useCallback(async(timeMs:number)=>{if(!session)return;try{const result=await roomAction<{position:number;points:number}>(code,{action:"finish",playerId:session.playerId,playerToken:session.playerToken,timeMs});setFinish(result);await refresh()}catch(e){setError(e instanceof Error?e.message:"Không ghi được kết quả")}},[code,session,refresh]);
   const sendEliminate=useCallback(async(timeMs:number)=>{if(!session)return;try{const result=await roomAction<{position:number;points:number}>(code,{action:"eliminate",playerId:session.playerId,playerToken:session.playerToken,timeMs});setFinish(result);await refresh()}catch(e){setError(e instanceof Error?e.message:"Không ghi được thứ hạng sinh tồn")}},[code,session,refresh]);
   useEffect(()=>{setFinish(null)},[state?.room.currentRound]);

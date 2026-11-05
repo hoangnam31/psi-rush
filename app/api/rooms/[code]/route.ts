@@ -29,28 +29,18 @@ async function getRoomPayload(room: RoomRow, isHost: boolean, includeResults = t
   };
 }
 
-async function getLivePayload(room: RoomRow) {
-  const db = getDb();
-  const roster = await db.select({
-    id: players.id, name: players.name, color: players.color, score: players.score,
-    progress: players.progress, positionX: players.positionX, finishPosition: players.finishPosition,
-    isReady: players.isReady,
-  }).from(players).where(eq(players.roomId, room.id)).orderBy(asc(players.name));
-  return {
-    room: {
-      status: room.status, currentRound: room.currentRound, currentMap: room.currentMap,
-      updatedAt: room.updatedAt,
-    },
-    players: roster,
-  };
-}
-
 export async function GET(request: Request, context: Context) {
   try {
     const { code } = await context.params; const room = await getRoom(code);
     if (!room) return Response.json({ error: "Không tìm thấy phòng" }, { status: 404 });
     const hostToken = new URL(request.url).searchParams.get("hostToken");
-    return Response.json(await getRoomPayload(room, hostToken === room.hostToken, room.status !== "waiting"));
+    return Response.json(await getRoomPayload(room, hostToken === room.hostToken, room.status !== "waiting"), {
+      // Hundreds of players request the same roster. A one-second edge cache
+      // turns those reads into one D1 snapshot per edge instead of hundreds
+      // of identical database queries, while remote interpolation hides the
+      // deliberately short staleness window.
+      headers: { "cache-control": "public, max-age=0, s-maxage=1, stale-while-revalidate=1" },
+    });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Không thể tải phòng" }, { status: 500 });
   }
@@ -119,10 +109,7 @@ export async function POST(request: Request, context: Context) {
       await db.update(players).set({ progress, positionX, lastSeenAt: sql`CURRENT_TIMESTAMP` }).where(and(
         eq(players.id, playerId), eq(players.roomId, room.id), eq(players.token, playerToken),
       ));
-      // Progress sync also returns the live roster. Players no longer need a
-      // separate full-room GET every 650 ms, which keeps 200-player rooms
-      // responsive while preserving the same interpolation data.
-      return Response.json(await getLivePayload(room));
+      return Response.json({ ok: true });
     }
     if (action === "ready") {
       await db.update(players).set({ isReady: Boolean(body.ready), lastSeenAt: sql`CURRENT_TIMESTAMP` }).where(and(
