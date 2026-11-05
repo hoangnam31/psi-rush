@@ -5,22 +5,37 @@ import { courseWidthForPlayers, getMapMode, pickMap, scoreForPosition } from "..
 
 type Context = { params: Promise<{ code: string }> };
 
+async function retryDb<T>(operation: () => Promise<T>, attempts = 3): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try { return await operation(); }
+    catch (error) {
+      lastError = error;
+      if (attempt + 1 < attempts) {
+        const backoff = 70 * 2 ** attempt + Math.random() * 70;
+        await new Promise((resolve) => setTimeout(resolve, backoff));
+      }
+    }
+  }
+  throw lastError;
+}
+
 async function getRoom(code: string) {
   const db = getDb();
-  return (await db.select().from(rooms).where(eq(rooms.code, code.toUpperCase())).limit(1))[0];
+  return (await retryDb(() => db.select().from(rooms).where(eq(rooms.code, code.toUpperCase())).limit(1)))[0];
 }
 
 type RoomRow = NonNullable<Awaited<ReturnType<typeof getRoom>>>;
 
 async function getRoomPayload(room: RoomRow, isHost: boolean, includeResults = true) {
   const db = getDb();
-  const roster = await db.select({
+  const roster = await retryDb(() => db.select({
     id: players.id, name: players.name, color: players.color, score: players.score,
     progress: players.progress, positionX: players.positionX, finishPosition: players.finishPosition,
     isReady: players.isReady,
-  }).from(players).where(eq(players.roomId, room.id)).orderBy(desc(players.score), desc(players.progress));
+  }).from(players).where(eq(players.roomId, room.id)).orderBy(desc(players.score), desc(players.progress)));
   const results = includeResults
-    ? await db.select().from(roundResults).where(eq(roundResults.roomId, room.id)).orderBy(desc(roundResults.roundNumber), asc(roundResults.position))
+    ? await retryDb(() => db.select().from(roundResults).where(eq(roundResults.roomId, room.id)).orderBy(desc(roundResults.roundNumber), asc(roundResults.position)))
     : [];
   return {
     room: { ...room, hostToken: undefined, mapPool: JSON.parse(room.mapPool), isHost },
@@ -55,7 +70,7 @@ export async function POST(request: Request, context: Context) {
 
     if (action === "join") {
       if (room.status !== "waiting") return Response.json({ error: "Trận đấu đã bắt đầu" }, { status: 409 });
-      const count = (await db.select({ count: sql<number>`count(*)` }).from(players).where(eq(players.roomId, room.id)))[0]?.count ?? 0;
+      const count = (await retryDb(() => db.select({ count: sql<number>`count(*)` }).from(players).where(eq(players.roomId, room.id))))[0]?.count ?? 0;
       if (count >= room.maxPlayers) return Response.json({ error: "Phòng đã đầy" }, { status: 409 });
       const name = String(body.name || "").trim().slice(0, 16);
       if (!name) return Response.json({ error: "Hãy nhập tên người chơi" }, { status: 400 });
@@ -74,7 +89,7 @@ export async function POST(request: Request, context: Context) {
         if (nextRound > room.totalRounds) {
           await db.update(rooms).set({ status: "finished", updatedAt: sql`CURRENT_TIMESTAMP` }).where(eq(rooms.id, room.id));
         } else {
-          const playerCount = (await db.select({ count: sql<number>`count(*)` }).from(players).where(eq(players.roomId, room.id)))[0]?.count ?? 1;
+          const playerCount = (await retryDb(() => db.select({ count: sql<number>`count(*)` }).from(players).where(eq(players.roomId, room.id))))[0]?.count ?? 1;
           await db.update(players).set({ progress: 0, positionX: Math.round(courseWidthForPlayers(playerCount) / 2), finishPosition: null }).where(eq(players.roomId, room.id));
           await db.update(rooms).set({ status: "racing", currentRound: nextRound, currentMap: pickMap(pool, room.currentMap, nextRound, room.id), updatedAt: sql`CURRENT_TIMESTAMP` }).where(eq(rooms.id, room.id));
         }
@@ -106,15 +121,15 @@ export async function POST(request: Request, context: Context) {
     if (action === "progress") {
       const progress = Math.max(0, Math.min(99.8, Number(body.progress) || 0));
       const positionX = Math.max(-120, Math.min(3120, Number(body.positionX) || 800));
-      await db.update(players).set({ progress, positionX, lastSeenAt: sql`CURRENT_TIMESTAMP` }).where(and(
+      await retryDb(() => db.update(players).set({ progress, positionX, lastSeenAt: sql`CURRENT_TIMESTAMP` }).where(and(
         eq(players.id, playerId), eq(players.roomId, room.id), eq(players.token, playerToken),
-      ));
+      )));
       return Response.json({ ok: true });
     }
     if (action === "ready") {
-      await db.update(players).set({ isReady: Boolean(body.ready), lastSeenAt: sql`CURRENT_TIMESTAMP` }).where(and(
+      await retryDb(() => db.update(players).set({ isReady: Boolean(body.ready), lastSeenAt: sql`CURRENT_TIMESTAMP` }).where(and(
         eq(players.id, playerId), eq(players.roomId, room.id), eq(players.token, playerToken),
-      ));
+      )));
       return Response.json({ ok: true });
     }
     const player = (await db.select().from(players).where(and(eq(players.id, playerId), eq(players.roomId, room.id), eq(players.token, playerToken))).limit(1))[0];
