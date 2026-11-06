@@ -16,12 +16,12 @@ export default function PlayPage(){
   const refresh=useCallback(async()=>{if(!code||refreshPending.current)return;refreshPending.current=true;try{setState(await getRoomState(code));setError("")}catch(e){setError(e instanceof Error?e.message:"Mất kết nối")}finally{refreshPending.current=false}},[code]);
   const me=useMemo(()=>state?.players.find(p=>p.id===session?.playerId),[state,session]);
   const activelyRacing=Boolean(state?.room.status==="racing"&&!finish&&me&&!me.finishPosition);
-  useEffect(()=>{refresh();const count=state?.players.length||0;const delay=activelyRacing?(count>100?2000:count>50?1200:650):count>100?1200:count>50?900:650;const id=setInterval(refresh,delay);return()=>clearInterval(id)},[refresh,activelyRacing,state?.players.length]);
+  useEffect(()=>{refresh();const count=state?.players.length||0;const delay=activelyRacing?(count>100?2200:count>50?1500:900):count>100?1600:count>50?1200:900;const id=setInterval(()=>{if(!document.hidden)refresh()},delay);const visible=()=>{if(!document.hidden)refresh()};document.addEventListener("visibilitychange",visible);return()=>{clearInterval(id);document.removeEventListener("visibilitychange",visible)}},[refresh,activelyRacing,state?.players.length]);
   const sendProgress=useCallback((progress:number,positionX:number)=>{
     if(!session||syncPending.current)return;syncPending.current=true;
-    roomAction(code,{action:"progress",playerId:session.playerId,playerToken:session.playerToken,progress,positionX})
+    roomAction(code,{action:"progress",round:state?.room.currentRound,playerId:session.playerId,playerToken:session.playerToken,progress,positionX})
       .catch(()=>{}).finally(()=>{syncPending.current=false});
-  },[code,session]);
+  },[code,session,state?.room.currentRound]);
   const sendFinish=useCallback(async(timeMs:number)=>{if(!session)return;try{const result=await roomAction<{position:number;points:number}>(code,{action:"finish",playerId:session.playerId,playerToken:session.playerToken,timeMs});setFinish(result);await refresh()}catch(e){setError(e instanceof Error?e.message:"Không ghi được kết quả")}},[code,session,refresh]);
   const sendEliminate=useCallback(async(timeMs:number)=>{if(!session)return;try{const result=await roomAction<{position:number;points:number}>(code,{action:"eliminate",playerId:session.playerId,playerToken:session.playerToken,timeMs});setFinish(result);await refresh()}catch(e){setError(e instanceof Error?e.message:"Không ghi được thứ hạng sinh tồn")}},[code,session,refresh]);
   useEffect(()=>{setFinish(null)},[state?.room.currentRound]);

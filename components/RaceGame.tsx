@@ -5,7 +5,7 @@ import { BASE_COURSE_WIDTH, courseWidthForPlayers, MAPS, survivalSizeForPlayers 
 import { GameAudio } from "../lib/game-audio";
 import { blockStormWaveAt } from "../lib/block-storm";
 import { tileCollapseState } from "../lib/tile-collapse";
-import { CHARACTERS, getCharacter, getCharacterPhysics, type CharacterVisualState } from "../lib/characters";
+import { getCharacter, getCharacterPhysics, type CharacterVisualState } from "../lib/characters";
 import type { Player } from "../lib/types";
 
 const MAP_BRIEFING_MS = 10000;
@@ -253,7 +253,9 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
     audioRef.current = audio;
     void audio.unlock();
     const characterImages = new Map<string, HTMLImageElement>();
-    for (const definition of CHARACTERS) {
+    const activeCharacterIds = new Set([me.characterId, ...playersRef.current.map((player) => player.characterId)]);
+    for (const characterId of activeCharacterIds) {
+      const definition = getCharacter(characterId);
       const image = new Image();
       image.src = definition.image;
       characterImages.set(definition.id, image);
@@ -319,6 +321,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       disintegrating: false, disintegrateTime: 0, checkpoint: spawn.y, checkpointIndex: 0,
     };
     const particles: Particle[] = [];
+    const mixedColorCache = new Map<string, string>();
     const remoteStates = new Map<string, RemoteState>();
     const keys: Record<string, boolean> = {};
     let gamepadJump = false;
@@ -345,7 +348,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       const rect = canvas!.getBoundingClientRect();
       viewportW = Math.max(1, rect.width); viewportH = Math.max(1, rect.height);
       const mobileViewport = Math.min(viewportW, viewportH) <= 700;
-      const dpr = Math.min(devicePixelRatio, mobileViewport ? 1.35 : 1.75);
+      const dpr = Math.min(devicePixelRatio, mobileViewport ? 1.15 : 1.75);
       canvas!.width = Math.round(viewportW * dpr);
       canvas!.height = Math.round(viewportH * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -873,9 +876,9 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       shake = Math.max(0, shake - dt * 3.4);
 
       const progress = Math.max(0, Math.min(100, p.y / COURSE * 100));
-      const syncDelay = playersRef.current.length > 100 ? 2000 : playersRef.current.length > 50 ? 1200 : 650;
+      const syncDelay = playersRef.current.length > 100 ? 2200 : playersRef.current.length > 50 ? 1500 : 800;
       if (now - lastSync > syncDelay) { lastSync = now; progressCb.current(progress, p.x); }
-      const uiDelay = Math.min(viewportW, viewportH) <= 700 ? 125 : 90;
+      const uiDelay = Math.min(viewportW, viewportH) <= 700 ? 160 : 100;
       if (now - lastUi > uiDelay) {
         lastUi = now;
         setLocalProgress(progress); setDash(Math.max(0, (1 - p.dashCd / 3) * 100)); setMana(p.mana); setElapsed(Math.max(0, Date.now() - roundGoEpoch));
@@ -1382,12 +1385,24 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
     }
 
     function colorMix(color: string, mix: string, amount: number) {
+      const cacheKey = `${color}:${mix}:${amount}`;
+      const cached = mixedColorCache.get(cacheKey);
+      if (cached) return cached;
       const parse = (value: string) => value.replace("#", "").match(/.{2}/g)!.map((part) => parseInt(part, 16));
       const a = parse(color), b = parse(mix);
-      return `rgb(${a.map((channel, index) => Math.round(channel * (1 - amount) + b[index] * amount)).join(",")})`;
+      const result = `rgb(${a.map((channel, index) => Math.round(channel * (1 - amount) + b[index] * amount)).join(",")})`;
+      mixedColorCache.set(cacheKey, result);
+      return result;
     }
 
+    let lastFrame = 0;
     function loop(now: number) {
+      const mobileFrame = Math.min(viewportW, viewportH) <= 700;
+      // Cap 90/120 Hz phones near 60 FPS without forcing ordinary 60 Hz
+      // devices down to 30 FPS because of requestAnimationFrame quantization.
+      const frameInterval = mobileFrame ? 1000 / 62 : 0;
+      if (frameInterval && now - lastFrame < frameInterval) { raf = requestAnimationFrame(loop); return; }
+      lastFrame = now;
       const dt = Math.min(.033, (now - last) / 1000);
       last = now;
       if (!finished) update(dt, now);

@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { WobbleLogo } from "../../components/WobbleLogo";
 import { Bean } from "../../components/Bean";
 import { RoomTrack } from "../../components/RoomTrack";
@@ -15,6 +15,7 @@ export default function HostPage() {
   const [session, setSession] = useState<HostSession | null>(null);
   const [state, setState] = useState<RoomState | null>(null);
   const [error, setError] = useState(""); const [busy, setBusy] = useState(false);
+  const refreshPending = useRef(false);
   const [title, setTitle] = useState("PSI Rush Cup"); const [maxPlayers, setMaxPlayers] = useState(50);
   const [rounds, setRounds] = useState(DEFAULT_ROUNDS); const [maps, setMaps] = useState<string[]>(MAPS.map(m=>m.id));
 
@@ -27,9 +28,10 @@ export default function HostPage() {
     const raw=localStorage.getItem("wobble_host");if(raw)try{setSession(JSON.parse(raw))}catch{localStorage.removeItem("wobble_host")}
   },[]);
   const refresh = useCallback(async()=>{
-    if(!session)return; try{setState(await getRoomState(session.code,session.hostToken));setError("")}catch(e){setError(e instanceof Error?e.message:"Mất kết nối")}
+    if(!session||refreshPending.current)return;refreshPending.current=true;
+    try{setState(await getRoomState(session.code,session.hostToken));setError("")}catch(e){setError(e instanceof Error?e.message:"Mất kết nối")}finally{refreshPending.current=false}
   },[session]);
-  useEffect(()=>{refresh();const id=setInterval(refresh,450);return()=>clearInterval(id)},[refresh]);
+  useEffect(()=>{refresh();const id=setInterval(refresh,700);return()=>clearInterval(id)},[refresh]);
 
   async function createRoom(){
     setBusy(true);setError("");try{
@@ -69,7 +71,7 @@ export default function HostPage() {
       <aside className="lobby-roster"><div className="section-head"><div><small>PLAYERS</small><h3>ĐÃ THAM GIA</h3></div><b>{players.length}<i>/{room.maxPlayers}</i></b></div><div className="roster-grid">{players.map((p,i)=><div className="roster-player" key={p.id}><Bean characterId={p.characterId} size="sm"/><span><b>{p.name}</b><small>{p.isReady?"SẴN SÀNG":"ĐANG CHỜ"}</small></span><i>{String(i+1).padStart(2,"0")}</i></div>)}{!players.length&&<div className="empty-roster">Chưa có ai trong phòng.<br/>Hãy chiếu mã QR lên màn hình lớn!</div>}</div><button className="start-btn" disabled={!players.length||busy} onClick={()=>act("start")}>BẮT ĐẦU ROUND 1 <span>▶</span></button></aside>
     </section>}
     {room.status==="racing"&&<section className="race-admin-grid">
-      <div className="spectator-panel"><div className="panel-title"><div><small>{mode==="survival"?"LIVE SPECTATOR":"LIVE RACE ORDER"}</small><h2>{mode==="survival"?"TOÀN CẢNH SINH TỒN":"TIẾN ĐỘ ĐƯỜNG ĐUA"}</h2></div><span className="live-badge"><i/> LIVE</span></div><RoomTrack players={players} mapId={room.currentMap} round={room.currentRound} startedAt={room.updatedAt}/><div className="race-actions"><button className="danger-action" disabled={busy} onClick={()=>act("endRound")}>CHỐT KẾT QUẢ ROUND</button></div></div>
+      <div className="spectator-panel"><div className="panel-title"><div><small>{mode==="survival"?"LIVE SPECTATOR":"LIVE RACE ORDER"}</small><h2>{mode==="survival"?"TOÀN CẢNH SINH TỒN":"TIẾN ĐỘ ĐƯỜNG ĐUA"}</h2></div><span className="live-badge"><i/> LIVE</span></div><RoomTrack key={`${room.currentRound}-${room.currentMap}`} players={players} mapId={room.currentMap} round={room.currentRound} startedAt={room.updatedAt}/><div className="race-actions"><button className="danger-action" disabled={busy} onClick={()=>act("endRound")}>CHỐT KẾT QUẢ ROUND</button></div></div>
       <Leaderboard players={ranked} currentResults={currentResults} title="XẾP HẠNG TRỰC TIẾP" mode={mode}/>
     </section>}
     {(room.status==="results"||room.status==="finished")&&<section className="results-admin">

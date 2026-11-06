@@ -42,14 +42,16 @@ async function syncRoomScores(db: ReturnType<typeof getDb>, roomId: string) {
 
 async function getRoomPayload(room: RoomRow, isHost: boolean, includeResults = true) {
   const db = getDb();
-  const roster = await retryDb(() => db.select({
-    id: players.id, name: players.name, characterId: players.characterId, color: players.color, score: players.score,
-    progress: players.progress, positionX: players.positionX, finishPosition: players.finishPosition,
-    isReady: players.isReady,
-  }).from(players).where(eq(players.roomId, room.id)).orderBy(asc(players.name)));
-  const results = includeResults
-    ? await retryDb(() => db.select().from(roundResults).where(eq(roundResults.roomId, room.id)).orderBy(desc(roundResults.roundNumber), asc(roundResults.position)))
-    : [];
+  const [roster, results] = await Promise.all([
+    retryDb(() => db.select({
+      id: players.id, name: players.name, characterId: players.characterId, color: players.color, score: players.score,
+      progress: players.progress, positionX: players.positionX, finishPosition: players.finishPosition,
+      isReady: players.isReady,
+    }).from(players).where(eq(players.roomId, room.id)).orderBy(asc(players.name))),
+    includeResults
+      ? retryDb(() => db.select().from(roundResults).where(eq(roundResults.roomId, room.id)).orderBy(desc(roundResults.roundNumber), asc(roundResults.position)))
+      : Promise.resolve([]),
+  ]);
   return {
     room: { ...room, hostToken: undefined, mapPool: JSON.parse(room.mapPool), isHost },
     players: roster,
@@ -65,7 +67,7 @@ export async function GET(request: Request, context: Context) {
     const isHost = hostToken === room.hostToken;
     const includeResults = isHost || room.status === "results" || room.status === "finished";
     return Response.json(await getRoomPayload(room, isHost, includeResults), {
-      headers: { "cache-control": "public, max-age=0, s-maxage=1" },
+      headers: { "cache-control": "private, no-store, max-age=0" },
     });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Không thể tải phòng" }, { status: 500 });
@@ -84,8 +86,10 @@ export async function POST(request: Request, context: Context) {
     if (action === "progress") {
       const progress = Math.max(0, Math.min(99.8, Number(body.progress) || 0));
       const positionX = Math.max(-120, Math.min(3120, Number(body.positionX) || 800));
+      const round = Math.max(0, Math.floor(Number(body.round) || 0));
       await retryDb(() => db.update(players).set({ progress, positionX, lastSeenAt: sql`CURRENT_TIMESTAMP` }).where(and(
         eq(players.id, playerId), eq(players.token, playerToken),
+        sql`exists (select 1 from ${rooms} where ${rooms.id} = ${players.roomId} and ${rooms.currentRound} = ${round} and ${rooms.status} = 'racing')`,
       )));
       return Response.json({ ok: true });
     }
