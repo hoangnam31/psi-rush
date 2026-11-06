@@ -152,13 +152,13 @@ button,input,select{font-family:inherit}.eyebrow{display:inline-flex;align-items
 
 /* Welcome squad: one lead mascot in front, two teammates behind. */
 .landing-art .hero-squad{position:absolute;transform-origin:50% 90%;will-change:transform;filter:drop-shadow(0 22px 18px #06122966)}
-.landing-art .hero-squad-lead{z-index:5;left:50%;bottom:9%;transform:translateX(-50%) scale(1.62);animation:hero-lead-float 3.2s ease-in-out infinite}
-.landing-art .hero-squad-left{z-index:3;left:2%;bottom:18%;transform:rotate(-8deg) scale(1.25);animation:hero-left-float 3.8s ease-in-out .25s infinite}
-.landing-art .hero-squad-right{z-index:3;right:0;bottom:18%;transform:rotate(8deg) scale(1.25);animation:hero-right-float 3.6s ease-in-out .6s infinite}
+.landing-art .hero-squad-lead{z-index:5;left:50%;bottom:5%;transform:translateX(-50%) scale(2.02);animation:hero-lead-float 3.2s ease-in-out infinite}
+.landing-art .hero-squad-left{z-index:3;left:7%;bottom:15%;transform:rotate(-7deg) scale(1.68);animation:hero-left-float 3.8s ease-in-out .25s infinite}
+.landing-art .hero-squad-right{z-index:3;right:5%;bottom:15%;transform:rotate(7deg) scale(1.68);animation:hero-right-float 3.6s ease-in-out .6s infinite}
 .landing-art .hero-squad .mascot-art{animation:none}
-@keyframes hero-lead-float{50%{transform:translateX(-50%) translateY(-13px) rotate(1.5deg) scale(1.66)}}
-@keyframes hero-left-float{50%{transform:translateY(-9px) rotate(-4deg) scale(1.28)}}
-@keyframes hero-right-float{50%{transform:translateY(-11px) rotate(4deg) scale(1.29)}}
+@keyframes hero-lead-float{50%{transform:translateX(-50%) translateY(-13px) rotate(1.5deg) scale(2.07)}}
+@keyframes hero-left-float{50%{transform:translateY(-9px) rotate(-4deg) scale(1.73)}}
+@keyframes hero-right-float{50%{transform:translateY(-11px) rotate(4deg) scale(1.73)}}
 
 /* Larger admin presentation for projectors and shared screens. */
 @media(min-width:1001px){
@@ -187,7 +187,7 @@ button,input,select{font-family:inherit}.eyebrow{display:inline-flex;align-items
 }
 
 @media(min-width:651px) and (max-width:1000px){
-  .landing-art{inset:80px -12% 0 36%;opacity:.48}.landing-art .hero-squad-lead{transform:translateX(-50%) scale(1.48)}.landing-art .hero-squad-left{left:5%;transform:rotate(-8deg) scale(1.12)}.landing-art .hero-squad-right{right:3%;transform:rotate(8deg) scale(1.12)}
+  .landing-art{inset:80px -12% 0 36%;opacity:.48}
 }
 
 @media(prefers-reduced-motion:reduce){.landing-art .hero-squad{animation:none!important}}
