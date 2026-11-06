@@ -4,18 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { BASE_COURSE_WIDTH, courseWidthForPlayers, MAPS, survivalSizeForPlayers } from "../lib/game";
 import { GameAudio } from "../lib/game-audio";
 import { blockStormWaveAt } from "../lib/block-storm";
+import { laserSweepFramesAt } from "../lib/laser-arena";
+import { MAP_BRIEFING_MS, ROUND_COUNTDOWN_MS, serverEpoch } from "../lib/round-timing";
 import { tileCollapseState } from "../lib/tile-collapse";
 import { getCharacter, getCharacterPhysics, type CharacterVisualState } from "../lib/characters";
 import type { Player } from "../lib/types";
-
-const MAP_BRIEFING_MS = 10000;
-const ROUND_COUNTDOWN_MS = 3000;
-
-function serverEpoch(value: string) {
-  const normalized = value.includes("T") ? value : `${value.replace(" ", "T")}Z`;
-  const epoch = Date.parse(normalized);
-  return Number.isFinite(epoch) ? epoch : Date.now();
-}
 
 type Props = {
   me: Player;
@@ -602,38 +595,12 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
     }
 
     function getLaserBeams(time: number): LaserBeam[] {
-      if (map.id !== "lava" || !survivalZone || time < 2.5) return [];
-      const beams: LaserBeam[] = [];
-      const cadence = 4.2;
-      const currentWave = Math.floor((time - 2.5) / cadence);
+      if (map.id !== "lava" || !survivalZone) return [];
       const centerX = survivalZone.x + survivalZone.w / 2, centerY = survivalZone.y + survivalZone.h / 2;
       const radius = Math.min(survivalZone.w, survivalZone.h) * .43;
-      const travelRadius = radius * 1.28;
-      // Inspect only recent waves. Extra beams are scheduled from each wave's
-      // own start time, so raising the difficulty never materializes an older
-      // laser halfway across the arena.
-      for (let wave = Math.max(0, currentWave - 2); wave <= currentWave; wave++) {
-        const waveStart = 2.5 + wave * cadence;
-        const beamCount = waveStart >= 42 ? 3 : waveStart >= 20 ? 2 : 1;
-        for (let variant = 0; variant < beamCount; variant++) {
-          const startAt = waveStart + variant * (beamCount === 3 ? 1.05 : 1.35);
-          const duration = Math.max(2.8, 4.8 - wave * .055);
-          const progress = (time - startAt) / duration;
-          if (progress < 0 || progress > 1) continue;
-          const vertical = waveStart >= 24 && (wave + variant) % 2 !== 0;
-          const reverse = (wave + variant) % 3 === 0;
-          const t = reverse ? 1 - progress : progress;
-          const velocity = (reverse ? -1 : 1) * travelRadius * 2 / duration;
-          if (vertical) {
-            const x = centerX - travelRadius + travelRadius * 2 * t;
-            beams.push({ x1: x, y1: centerY - radius * 1.08, x2: x, y2: centerY + radius * 1.08, vx: velocity, vy: 0, color: variant % 2 ? "#ffe14a" : "#ff3d9a" });
-          } else {
-            const y = centerY - travelRadius + travelRadius * 2 * t;
-            beams.push({ x1: centerX - radius * 1.08, y1: y, x2: centerX + radius * 1.08, y2: y, vx: 0, vy: velocity, color: variant % 2 ? "#35dcff" : "#ff375f" });
-          }
-        }
-      }
-      return beams;
+      return laserSweepFramesAt(time).map((frame) => frame.vertical
+        ? { x1: centerX + frame.offset * radius, y1: centerY - frame.extent * radius, x2: centerX + frame.offset * radius, y2: centerY + frame.extent * radius, vx: frame.velocity * radius, vy: 0, color: frame.color }
+        : { x1: centerX - frame.extent * radius, y1: centerY + frame.offset * radius, x2: centerX + frame.extent * radius, y2: centerY + frame.offset * radius, vx: 0, vy: frame.velocity * radius, color: frame.color });
     }
 
     function hitDynamicHazards(time: number, now: number) {
@@ -895,11 +862,9 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       const mobileViewport = Math.min(w, h) <= 700;
       const survivalFit = survivalZone ? Math.min(w / (survivalZone.w + 220), h / (survivalZone.h + 260)) : .4;
       const raceFit = w / (courseWidth + 160);
-      const minScale = mobileViewport ? .6 : .42;
-      const maxScale = mobileViewport ? 1.02 : .9;
       const baseScale = isSurvival
-        ? Math.max(minScale, Math.min(maxScale, survivalFit * (mobileViewport ? 1.68 : 1.42)))
-        : Math.max(minScale, Math.min(maxScale, raceFit * (mobileViewport ? 1.45 : 1.08)));
+        ? Math.max(mobileViewport ? .5 : .38, Math.min(mobileViewport ? .9 : .82, survivalFit * (mobileViewport ? 1.5 : 1.3)))
+        : Math.max(mobileViewport ? .6 : .42, Math.min(mobileViewport ? 1.02 : .9, raceFit * (mobileViewport ? 1.45 : 1.08)));
       renderScale = baseScale;
       const playerScreenY = isSurvival ? h * .52 : h * (mobileViewport ? .64 : .72);
       const runnerRadius = (mobileViewport ? 40 : 35) * baseScale;
