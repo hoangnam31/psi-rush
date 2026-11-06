@@ -35,7 +35,6 @@ export function RoomTrack({ players, mapId }: { players: Player[]; mapId: string
       <div className="race-leader-chip"><small>{survival ? "CÒN TRỤ" : "ĐANG DẪN ĐẦU"}</small><b><i style={{ backgroundImage: leader ? `url(${getCharacter(leader.characterId).image})` : undefined }}/>{leader?.name ?? "—"}</b><span>{survival ? `${alive}/${players.length}` : leader ? `${Math.round(leader.progress)}%` : "0%"}</span></div>
     </div>
     <div className="race-progress-scroll">
-      <div className="race-progress-scale"><span>{survival ? "OUT" : "START"}</span><i/><span>25%</span><i/><span>50%</span><i/><span>75%</span><i/><strong>{survival ? "ALIVE" : "FINISH"}</strong></div>
       <div className="race-progress-list" style={{ height: `${Math.max(players.length, 1) * rowHeight}px` }}>
         {players.map((player) => {
           const rank = rankById.get(player.id) ?? players.length;
