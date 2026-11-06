@@ -8,6 +8,9 @@ import { tileCollapseState } from "../lib/tile-collapse";
 import { CHARACTERS, getCharacter, getCharacterPhysics, type CharacterVisualState } from "../lib/characters";
 import type { Player } from "../lib/types";
 
+const MAP_BRIEFING_MS = 7000;
+const ROUND_COUNTDOWN_MS = 3000;
+
 type Props = {
   me: Player;
   players: Player[];
@@ -191,7 +194,9 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
   const eliminateCb = useRef(onEliminate);
   const playersRef = useRef(players);
   const input = useRef({ x: 0, y: 0, jump: false, dash: false, interact: false });
-  const [countdown, setCountdown] = useState("3");
+  const [countdown, setCountdown] = useState("");
+  const [briefing, setBriefing] = useState(true);
+  const [briefingSeconds, setBriefingSeconds] = useState(Math.ceil(MAP_BRIEFING_MS / 1000));
   const [dash, setDash] = useState(100);
   const [mana, setMana] = useState(100);
   const [elapsed, setElapsed] = useState(0);
@@ -261,7 +266,10 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
     let finished = false;
     let eliminationSent = false;
     const normalizedStartedAt = startedAt.includes("T") ? startedAt : `${startedAt.replace(" ", "T")}Z`;
-    const roundGoEpoch = (Number.isFinite(Date.parse(normalizedStartedAt)) ? Date.parse(normalizedStartedAt) : Date.now()) + 3000;
+    const roundStartedEpoch = Number.isFinite(Date.parse(normalizedStartedAt)) ? Date.parse(normalizedStartedAt) : Date.now();
+    const briefingEndEpoch = roundStartedEpoch + MAP_BRIEFING_MS;
+    const roundGoEpoch = briefingEndEpoch + ROUND_COUNTDOWN_MS;
+    const briefingEndAt = performance.now() + Math.max(0, briefingEndEpoch - Date.now());
     const readyAt = performance.now() + Math.max(0, roundGoEpoch - Date.now());
     const p = {
       x: spawn.x, y: spawn.y, vx: 0, vy: 0, z: 0, vz: 0, stun: 0, hitCd: 0, hitTime: 0, landTime: 0, respawnTime: 0,
@@ -608,6 +616,14 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
     }
 
     function update(dt: number, now: number) {
+      const briefingRemain = briefingEndAt - now;
+      if (briefingRemain > 0) {
+        setBriefing(true);
+        setBriefingSeconds(Math.max(1, Math.ceil(briefingRemain / 1000)));
+        input.current.jump = false; input.current.dash = false; input.current.interact = false;
+        return;
+      }
+      setBriefing(false);
       const remain = readyAt - now;
       if (remain > 0) { setCountdown(String(Math.ceil(remain / 1000))); return; }
       if (!start) {
@@ -1349,6 +1365,14 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
 
   return <div className="race-game">
     <canvas ref={canvasRef}/>
+    {briefing && <div className="map-briefing" role="dialog" aria-modal="true" aria-label={`Hướng dẫn ${map.name}`}>
+      <div className="map-briefing-card" style={{ "--briefing-accent": map.accent } as React.CSSProperties}>
+        <div className="map-briefing-top"><span className="map-briefing-icon">{map.icon}</span><div><small>ROUND {round} · HƯỚNG DẪN MAP</small><h2>{map.name}</h2><span>{isSurvival ? "SINH TỒN" : "ĐUA VỀ ĐÍCH"}</span></div></div>
+        <p>{map.guide.objective}</p>
+        <div className="map-briefing-tips">{map.guide.tips.map((tip, index)=><div key={tip}><b>0{index + 1}</b><span>{tip}</span></div>)}</div>
+        <div className="map-briefing-timer"><div><span>TRẬN ĐẤU BẮT ĐẦU SAU</span><strong>{briefingSeconds}s</strong></div><i><b key={briefingSeconds}/></i></div>
+      </div>
+    </div>}
     {countdown && <div className="race-countdown">{countdown}</div>}
     {impact && <div className="impact-callout">{impact}</div>}
     <button className={`sound-toggle ${soundOn ? "" : "muted"}`} onClick={toggleSound} aria-label={soundOn ? "Tắt âm thanh" : "Bật âm thanh"}><b>{soundOn ? "♪" : "×"}</b><span>{soundOn ? "ÂM THANH" : "ĐÃ TẮT"}</span></button>
