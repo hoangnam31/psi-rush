@@ -214,7 +214,19 @@ export async function POST(request: Request, context: Context) {
         await db.update(players).set({ finishPosition: 1, lastSeenAt: sql`CURRENT_TIMESTAMP` }).where(eq(players.id, winner.id));
         await syncPlayerScore(db, room.id, winner.id);
       }
-      return Response.json({ ok: true, position, points });
+      // Once at most one player remains, the survival standings are complete:
+      // the final survivor has already been awarded #1 above, while a solo
+      // player who falls is itself #1. Close the round automatically so the
+      // host never has to press the manual end-round button.
+      if (survivors.length <= 1) {
+        await syncRoomScores(db, room.id);
+        const roundStatus = room.currentRound >= room.totalRounds ? "finished" : "results";
+        await db.update(rooms).set({ status: roundStatus, updatedAt: sql`CURRENT_TIMESTAMP` }).where(and(
+          eq(rooms.id, room.id), eq(rooms.currentRound, room.currentRound), eq(rooms.status, "racing"),
+        ));
+        return Response.json({ ok: true, position, points, roundEnded: true });
+      }
+      return Response.json({ ok: true, position, points, roundEnded: false });
     }
     return Response.json({ ok: true });
   } catch (error) {
