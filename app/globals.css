@@ -227,3 +227,10 @@ button,input,select{font-family:inherit}.eyebrow{display:inline-flex;align-items
 @media(max-width:650px){.survival-overview-heading{left:10px;top:10px;max-width:60%;padding:8px 10px}.survival-overview-heading span{display:none}.survival-overview .track-lane.survival-layout{width:88%;max-height:72%;top:54%}.survival-overview .track-runner>i.track-mascot{width:24px;height:31px}.survival-overview .track-runner>span{bottom:31px;max-width:70px}}
 
 .kicked-shell{text-align:center;padding:24px}.kicked-shell .loader-bean{filter:grayscale(.65);animation:none}.kicked-shell p{max-width:420px;color:#ffd46f;font-size:13px;line-height:1.6}.kicked-shell .secondary-action{margin-top:18px}
+
+/* Admin avatars use the transparent character cutouts without a badge frame. */
+.spectator-track .track-mascot,
+.spectator-track .race-leader-chip b i,
+.spectator-track .race-player-label>i,
+.spectator-track .race-progress-marker>i,
+.leaderboard .character-dot{border:0!important;border-radius:0!important;background-color:transparent!important;background-position:center!important;background-repeat:no-repeat!important;background-size:contain!important;box-shadow:none!important}
