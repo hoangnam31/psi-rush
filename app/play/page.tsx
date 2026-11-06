@@ -11,9 +11,9 @@ import { getRoomState, roomAction, type RoomState } from "../../lib/types";
 type PlayerSession={playerId:string;playerToken:string;roomCode:string};
 export default function PlayPage(){
   const router=useRouter();const [code,setCode]=useState("");const [session,setSession]=useState<PlayerSession|null>(null);const [state,setState]=useState<RoomState|null>(null);const [error,setError]=useState("");const [finish,setFinish]=useState<{position:number;points:number}|null>(null);
-  const syncPending=useRef(false);
+  const syncPending=useRef(false);const refreshPending=useRef(false);
   useEffect(()=>{const c=new URLSearchParams(location.search).get("room")?.toUpperCase()||"";setCode(c);const raw=localStorage.getItem(`wobble_player_${c}`);if(!raw){router.replace(`/join?room=${c}`);return}try{setSession(JSON.parse(raw))}catch{router.replace(`/join?room=${c}`)}},[router]);
-  const refresh=useCallback(async()=>{if(!code)return;try{setState(await getRoomState(code));setError("")}catch(e){setError(e instanceof Error?e.message:"Mất kết nối")}},[code]);
+  const refresh=useCallback(async()=>{if(!code||refreshPending.current)return;refreshPending.current=true;try{setState(await getRoomState(code));setError("")}catch(e){setError(e instanceof Error?e.message:"Mất kết nối")}finally{refreshPending.current=false}},[code]);
   const me=useMemo(()=>state?.players.find(p=>p.id===session?.playerId),[state,session]);
   const activelyRacing=Boolean(state?.room.status==="racing"&&!finish&&me&&!me.finishPosition);
   useEffect(()=>{refresh();const count=state?.players.length||0;const delay=activelyRacing?(count>100?2000:count>50?1200:650):count>100?1200:count>50?900:650;const id=setInterval(refresh,delay);return()=>clearInterval(id)},[refresh,activelyRacing,state?.players.length]);

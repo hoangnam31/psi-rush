@@ -8,8 +8,14 @@ import { tileCollapseState } from "../lib/tile-collapse";
 import { CHARACTERS, getCharacter, getCharacterPhysics, type CharacterVisualState } from "../lib/characters";
 import type { Player } from "../lib/types";
 
-const MAP_BRIEFING_MS = 7000;
+const MAP_BRIEFING_MS = 10000;
 const ROUND_COUNTDOWN_MS = 3000;
+
+function serverEpoch(value: string) {
+  const normalized = value.includes("T") ? value : `${value.replace(" ", "T")}Z`;
+  const epoch = Date.parse(normalized);
+  return Number.isFinite(epoch) ? epoch : Date.now();
+}
 
 type Props = {
   me: Player;
@@ -194,9 +200,13 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
   const eliminateCb = useRef(onEliminate);
   const playersRef = useRef(players);
   const input = useRef({ x: 0, y: 0, jump: false, dash: false, interact: false });
+  const [initialBriefing] = useState(() => {
+    const remaining = Math.max(0, serverEpoch(startedAt) + MAP_BRIEFING_MS - Date.now());
+    return { remaining, open: remaining > 0, seconds: Math.max(1, Math.ceil(remaining / 1000)) };
+  });
   const [countdown, setCountdown] = useState("");
-  const [briefing, setBriefing] = useState(true);
-  const [briefingSeconds, setBriefingSeconds] = useState(Math.ceil(MAP_BRIEFING_MS / 1000));
+  const [briefing, setBriefing] = useState(initialBriefing.open);
+  const [briefingSeconds, setBriefingSeconds] = useState(initialBriefing.seconds);
   const [dash, setDash] = useState(100);
   const [mana, setMana] = useState(100);
   const [elapsed, setElapsed] = useState(0);
@@ -235,6 +245,9 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
     const courseWidth = courseWidthForPlayers(playerCount);
     const checkpoints = map.id === "sky" ? NEON_SKY_CHECKPOINTS : DEFAULT_CHECKPOINTS;
     const { obstacles, spinners, pits, bridges, zones } = buildCourse(map.id, courseWidth, playerCount);
+    const orderedObstacles = [...obstacles].sort((a, b) => b.y - a.y);
+    const orderedSpinners = [...spinners].sort((a, b) => b.y - a.y);
+    const orderedPits = [...pits].sort((a, b) => b.y - a.y);
     const survivalZone = isSurvival ? zones[0] : null;
     function spawnFor(playerId: string) {
       if (map.start === "tiles" && survivalZone) {
@@ -265,12 +278,14 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
     let cameraY = spawn.y;
     let finished = false;
     let eliminationSent = false;
-    const normalizedStartedAt = startedAt.includes("T") ? startedAt : `${startedAt.replace(" ", "T")}Z`;
-    const roundStartedEpoch = Number.isFinite(Date.parse(normalizedStartedAt)) ? Date.parse(normalizedStartedAt) : Date.now();
+    const roundStartedEpoch = serverEpoch(startedAt);
     const briefingEndEpoch = roundStartedEpoch + MAP_BRIEFING_MS;
     const roundGoEpoch = briefingEndEpoch + ROUND_COUNTDOWN_MS;
     const briefingEndAt = performance.now() + Math.max(0, briefingEndEpoch - Date.now());
     const readyAt = performance.now() + Math.max(0, roundGoEpoch - Date.now());
+    let briefingOpen = initialBriefing.open;
+    let shownBriefingSecond = initialBriefing.seconds;
+    let shownCountdown = "";
     const p = {
       x: spawn.x, y: spawn.y, vx: 0, vy: 0, z: 0, vz: 0, stun: 0, hitCd: 0, hitTime: 0, landTime: 0, respawnTime: 0,
       dashCd: 0, dashTime: 0, mana: 100, lastJump: -Infinity,
@@ -298,12 +313,18 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
     addEventListener("keyup", up);
     addEventListener("pointerdown", unlockAudio);
 
+    let viewportW = Math.max(1, canvas.clientWidth);
+    let viewportH = Math.max(1, canvas.clientHeight);
     function resize() {
-      const dpr = Math.min(devicePixelRatio, 2);
       const rect = canvas!.getBoundingClientRect();
-      canvas!.width = Math.round(rect.width * dpr);
-      canvas!.height = Math.round(rect.height * dpr);
+      viewportW = Math.max(1, rect.width); viewportH = Math.max(1, rect.height);
+      const mobileViewport = Math.min(viewportW, viewportH) <= 700;
+      const dpr = Math.min(devicePixelRatio, mobileViewport ? 1.35 : 1.75);
+      canvas!.width = Math.round(viewportW * dpr);
+      canvas!.height = Math.round(viewportH * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "medium";
     }
     resize();
     addEventListener("resize", resize);
@@ -618,16 +639,21 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
     function update(dt: number, now: number) {
       const briefingRemain = briefingEndAt - now;
       if (briefingRemain > 0) {
-        setBriefing(true);
-        setBriefingSeconds(Math.max(1, Math.ceil(briefingRemain / 1000)));
+        const nextSecond = Math.max(1, Math.ceil(briefingRemain / 1000));
+        if (nextSecond !== shownBriefingSecond) { shownBriefingSecond = nextSecond; setBriefingSeconds(nextSecond); }
         input.current.jump = false; input.current.dash = false; input.current.interact = false;
         return;
       }
-      setBriefing(false);
+      if (briefingOpen) { briefingOpen = false; setBriefing(false); }
       const remain = readyAt - now;
-      if (remain > 0) { setCountdown(String(Math.ceil(remain / 1000))); return; }
+      if (remain > 0) {
+        const nextCountdown = String(Math.ceil(remain / 1000));
+        if (nextCountdown !== shownCountdown) { shownCountdown = nextCountdown; setCountdown(nextCountdown); }
+        return;
+      }
       if (!start) {
         start = now;
+        shownCountdown = "GO!";
         setCountdown("GO!");
         window.setTimeout(() => setCountdown(""), 520);
       }
@@ -685,7 +711,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
           }
         }
         input.current.jump = false;
-        if (input.current.dash && p.dashCd <= 0 && p.stun <= .2) { p.dashTime = .35; p.dashCd = 3; audio.boost(); burst(p.x, p.y - 25, map.accent, 9); }
+        if (input.current.dash && p.dashCd <= 0 && p.stun <= .2) { p.dashTime = .58; p.dashCd = 3; audio.boost(); burst(p.x, p.y - 25, map.accent, 9); }
         input.current.dash = false;
         // E / gamepad X is reserved for map interactables. Clearing it here
         // keeps the shared controller edge-triggered until an interactable is added.
@@ -697,7 +723,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
         // direction while preserving the collision's momentum.
         const control = p.stun > 0 ? (map.id === "sweep" ? .7 : .1) : 1;
         const acceleration = 1280 * control * (.85 + physics.speedMultiplier * .15);
-        const maxSpeed = p.dashTime > 0 ? 850 * Math.max(.94, physics.speedMultiplier) : (map.id === "ice" ? 420 : 365) * physics.speedMultiplier;
+        const maxSpeed = p.dashTime > 0 ? 920 * Math.max(.94, physics.speedMultiplier) : (map.id === "ice" ? 420 : 365) * physics.speedMultiplier;
         p.vx += ix * acceleration * dt;
         p.vy += iy * acceleration * dt;
         // Apply stronger braking only after the stick/key is released. Active
@@ -706,7 +732,8 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
         const hasMoveInput = inputLength > .08;
         const activeFriction = map.id === "ice" ? .34 : .055;
         const idleFriction = map.id === "ice" ? .1 : .015;
-        const friction = Math.pow(hasMoveInput || p.dashTime > 0 ? activeFriction : idleFriction, dt);
+        const dashFriction = map.id === "ice" ? .55 : .3;
+        const friction = Math.pow(p.dashTime > 0 ? dashFriction : hasMoveInput ? activeFriction : idleFriction, dt);
         p.vx *= friction; p.vy *= friction;
         const speed = Math.hypot(p.vx, p.vy);
         if (speed > maxSpeed) { p.vx = p.vx / speed * maxSpeed; p.vy = p.vy / speed * maxSpeed; }
@@ -814,9 +841,10 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       shake = Math.max(0, shake - dt * 3.4);
 
       const progress = Math.max(0, Math.min(100, p.y / COURSE * 100));
-      const syncDelay = playersRef.current.length > 100 ? 2000 : playersRef.current.length > 50 ? 1200 : 400;
+      const syncDelay = playersRef.current.length > 100 ? 2000 : playersRef.current.length > 50 ? 1200 : 650;
       if (now - lastSync > syncDelay) { lastSync = now; progressCb.current(progress, p.x); }
-      if (now - lastUi > 80) {
+      const uiDelay = Math.min(viewportW, viewportH) <= 700 ? 125 : 90;
+      if (now - lastUi > uiDelay) {
         lastUi = now;
         setLocalProgress(progress); setDash(Math.max(0, (1 - p.dashCd / 3) * 100)); setMana(p.mana); setElapsed(Math.max(0, Date.now() - roundGoEpoch));
       }
@@ -828,15 +856,18 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
     }
 
     function draw(now: number) {
-      const rect = canvas!.getBoundingClientRect();
-      const w = rect.width, h = rect.height;
+      const w = viewportW, h = viewportH;
+      const mobileViewport = Math.min(w, h) <= 700;
       const survivalFit = survivalZone ? Math.min(w / (survivalZone.w + 220), h / (survivalZone.h + 260)) : .4;
       const raceFit = w / (courseWidth + 160);
+      const minScale = mobileViewport ? .6 : .42;
+      const maxScale = mobileViewport ? 1.02 : .9;
       const baseScale = isSurvival
-        ? Math.max(.42, Math.min(.9, survivalFit * 1.42))
-        : Math.max(.42, Math.min(.9, raceFit * 1.08));
+        ? Math.max(minScale, Math.min(maxScale, survivalFit * (mobileViewport ? 1.68 : 1.42)))
+        : Math.max(minScale, Math.min(maxScale, raceFit * (mobileViewport ? 1.45 : 1.08)));
       renderScale = baseScale;
-      const playerScreenY = isSurvival ? h * .52 : h * .72;
+      const playerScreenY = isSurvival ? h * .52 : h * (mobileViewport ? .64 : .72);
+      const runnerRadius = (mobileViewport ? 40 : 35) * baseScale;
       const raceSeconds = Math.max(0, (Date.now() - roundGoEpoch) / 1000);
       const sy = (worldY: number) => playerScreenY - (worldY - cameraY) * baseScale;
       const perspective = (_worldY: number) => 1;
@@ -854,7 +885,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
         drawSpecialZone(ctx, zone, raceSeconds, sx, sy, perspective, now);
       }
 
-      for (const pit of [...pits].sort((a, b) => b.y - a.y)) {
+      for (const pit of orderedPits) {
         const pitStart = sy(pit.y);
         const pitEnd = sy(pit.y + pit.h);
         // Long Ice Drift abysses may straddle the camera after the player has
@@ -867,7 +898,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
         const fallScale = Math.max(.06, 1 - p.fallTime * 1.15);
         const fallAlpha = Math.max(.04, 1 - p.fallTime * 1.08);
         const fallDrop = Math.min(h * .88, p.fallTime * p.fallTime * 620 + p.fallTime * 70);
-        const playerScale = 35 * baseScale * fallScale;
+        const playerScale = runnerRadius * fallScale;
         const playerY = sy(p.y) + fallDrop;
         ctx.save();
         if (p.fallPit) clipPit(ctx, p.fallPit, sx, sy);
@@ -890,8 +921,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
         drawBox(ctx, { ...bridge, kind: "block", icePlatform: true }, bridgeX(bridge, raceSeconds), sx, sy, perspective);
       }
 
-      const sortedObstacles = [...obstacles].sort((a, b) => b.y - a.y);
-      for (const obstacle of sortedObstacles) {
+      for (const obstacle of orderedObstacles) {
         const y = sy(obstacle.y);
         if (y < -130 || y > h + 160) continue;
         const obstacleX = movingX(obstacle, raceSeconds);
@@ -900,7 +930,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
         else drawBox(ctx, obstacle, obstacleX, sx, sy, perspective);
       }
 
-      for (const spinner of [...spinners].sort((a, b) => b.y - a.y)) {
+      for (const spinner of orderedSpinners) {
         const y = sy(spinner.y);
         if (y < -350 || y > h + 350) continue;
         drawSpinner(ctx, spinner, raceSeconds, sx, sy, perspective);
@@ -920,7 +950,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
         .filter((other) => sy(other.worldY) > -90 && sy(other.worldY) < h + 100)
         .sort((a, b) => b.worldY - a.worldY);
       for (const other of visiblePlayers) {
-        const scale = 35 * baseScale;
+        const scale = runnerRadius;
         drawMascot(ctx, sx(other.worldX, other.worldY), sy(other.worldY), scale, other.characterId, other.name, .9, raceSeconds, false, other.remoteSpeed > 40 ? "locomotion" : "idle");
       }
 
@@ -934,7 +964,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       ctx.globalAlpha = 1;
       if (!p.falling && !p.disintegrating) {
         const state: CharacterVisualState = p.respawnTime > 0 ? "respawn" : p.hitTime > 0 ? "hit" : p.dashTime > 0 ? "dash" : p.landTime > 0 ? "land" : p.z > 8 ? (p.vz >= 0 ? "jump" : "fall") : Math.hypot(p.vx, p.vy) > 35 ? "locomotion" : "idle";
-        drawMascot(ctx, sx(p.x, p.y), sy(p.y) - p.z * baseScale, 35 * baseScale, me.characterId, me.name, 1, raceSeconds, true, state);
+        drawMascot(ctx, sx(p.x, p.y), sy(p.y) - p.z * baseScale, runnerRadius, me.characterId, me.name, 1, raceSeconds, true, state);
       }
       ctx.restore();
 
@@ -998,7 +1028,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       context: CanvasRenderingContext2D, worldY: number, index: number,
       sx: (x: number, y: number) => number, sy: (y: number) => number, perspective: (y: number) => number,
     ) {
-      const y = sy(worldY); if (y < -50 || y > canvas!.getBoundingClientRect().height + 50) return;
+      const y = sy(worldY); if (y < -50 || y > viewportH + 50) return;
       const left = sx(0, worldY), right = sx(courseWidth, worldY), height = Math.max(7, 17 * perspective(worldY));
       const gradient = context.createLinearGradient(left, 0, right, 0);
       gradient.addColorStop(0, "#55c6d8"); gradient.addColorStop(.5, "#fff4d6"); gradient.addColorStop(1, "#f2b63f");
@@ -1159,7 +1189,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       context: CanvasRenderingContext2D, worldY: number, label: string,
       sx: (x: number, y: number) => number, sy: (y: number) => number, perspective: (y: number) => number,
     ) {
-      const y = sy(worldY); if (y < -60 || y > canvas!.getBoundingClientRect().height + 60) return;
+      const y = sy(worldY); if (y < -60 || y > viewportH + 60) return;
       const left = sx(0, worldY), right = sx(courseWidth, worldY), cells = 18, cellWidth = (right - left) / cells;
       const cellHeight = 34 * perspective(worldY);
       for (let row = 0; row < 2; row++) for (let column = 0; column < cells; column++) {
@@ -1338,7 +1368,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       if (audioRef.current === audio) audioRef.current = null;
       removeEventListener("keydown", down); removeEventListener("keyup", up); removeEventListener("pointerdown", unlockAudio); removeEventListener("resize", resize);
     };
-  }, [map.id, map.accent, map.floor, map.sky, me.characterId, me.id, me.name, round, startedAt, isSurvival, map.start]);
+  }, [map.id, map.accent, map.floor, map.sky, me.characterId, me.id, me.name, round, startedAt, isSurvival, map.start, initialBriefing.open, initialBriefing.seconds]);
 
   function pointerAxis(event: React.PointerEvent<HTMLDivElement>) {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -1370,7 +1400,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
         <div className="map-briefing-top"><span className="map-briefing-icon">{map.icon}</span><div><small>ROUND {round} · HƯỚNG DẪN MAP</small><h2>{map.name}</h2><span>{isSurvival ? "SINH TỒN" : "ĐUA VỀ ĐÍCH"}</span></div></div>
         <p>{map.guide.objective}</p>
         <div className="map-briefing-tips">{map.guide.tips.map((tip, index)=><div key={tip}><b>0{index + 1}</b><span>{tip}</span></div>)}</div>
-        <div className="map-briefing-timer"><div><span>TRẬN ĐẤU BẮT ĐẦU SAU</span><strong>{briefingSeconds}s</strong></div><i><b key={briefingSeconds}/></i></div>
+        <div className="map-briefing-timer"><div><span>TRẬN ĐẤU BẮT ĐẦU SAU</span><strong>{briefingSeconds}s</strong></div><i><b style={{ animationDuration: `${initialBriefing.remaining}ms` }}/></i></div>
       </div>
     </div>}
     {countdown && <div className="race-countdown">{countdown}</div>}
