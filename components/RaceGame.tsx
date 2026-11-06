@@ -1419,6 +1419,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
 
   const aliveCount = players.filter((player) => !player.finishPosition).length;
   const survivalPercent = players.length ? aliveCount / players.length * 100 : 100;
+  const hudProgress = Math.max(0, Math.min(100, isSurvival ? survivalPercent : localProgress));
 
   function toggleSound() {
     const next = !soundOn;
@@ -1441,7 +1442,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
     <button className={`sound-toggle ${soundOn ? "" : "muted"}`} onClick={toggleSound} aria-label={soundOn ? "Tắt âm thanh" : "Bật âm thanh"}><b>{soundOn ? "♪" : "×"}</b><span>{soundOn ? "ÂM THANH" : "ĐÃ TẮT"}</span></button>
     <div className="player-hud">
       <div><small>{isSurvival?"CÒN TRỤ":"TIẾN ĐỘ"}</small><b>{isSurvival?aliveCount:`${Math.min(100, Math.round(localProgress))}%`}</b></div>
-      <div className="hud-map"><span>{map.name} · {isSurvival?"SINH TỒN":"ROUND"} {round}</span><i><b style={{ width: `${isSurvival?survivalPercent:localProgress}%` }}/></i></div>
+      <div className="hud-map"><span>{map.name} · {isSurvival?"SINH TỒN":"ROUND"} {round}</span><i role="progressbar" aria-label={isSurvival ? "Tỷ lệ người chơi còn trụ" : "Tiến độ đường đua"} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(hudProgress)}><b style={{ transform: `scaleX(${hudProgress / 100})` }}/></i></div>
       <div><small>THỜI GIAN</small><b>{(elapsed / 1000).toFixed(1)}s</b></div>
     </div>
     <div className="control-hint"><span><b>WASD</b> DI CHUYỂN</span><span><b>SPACE</b> NHẢY</span><span><b>SHIFT</b> BOOST</span></div>

@@ -128,6 +128,14 @@ export async function POST(request: Request, context: Context) {
       } else if (action === "endRound") {
         const roster = await db.select().from(players).where(eq(players.roomId, room.id));
         const completed = await db.select().from(roundResults).where(and(eq(roundResults.roomId, room.id), eq(roundResults.roundNumber, room.currentRound)));
+        // A solo survival player is always the winner of the room, even when
+        // they fall or touch a laser before the host closes the round. Repair
+        // results created by older builds that incorrectly forced rank #2.
+        if (roster.length === 1 && completed.length === 1 && (completed[0].position !== 1 || completed[0].points !== scoreForPosition(1))) {
+          await db.update(roundResults).set({ position: 1, points: scoreForPosition(1) }).where(eq(roundResults.id, completed[0].id));
+          completed[0].position = 1;
+          completed[0].points = scoreForPosition(1);
+        }
         const completedIds = new Set(completed.map((result) => result.playerId));
         const pendingResults: Array<typeof roundResults.$inferInsert> = [];
         if (getMapMode(room.currentMap) === "survival") {
@@ -184,7 +192,10 @@ export async function POST(request: Request, context: Context) {
 
       const roster = await db.select().from(players).where(eq(players.roomId, room.id));
       const completed = await db.select().from(roundResults).where(and(eq(roundResults.roomId, room.id), eq(roundResults.roundNumber, room.currentRound)));
-      const position = Math.max(2, roster.length - completed.length);
+      // Elimination order runs from the current player count down to #1.
+      // Do not force a minimum of #2: in a one-player room, losing early is
+      // still rank #1 because there is no opponent above that player.
+      const position = Math.max(1, roster.length - completed.length);
       const points = scoreForPosition(position);
       await db.insert(roundResults).values({ roomId: room.id, roundNumber: room.currentRound, playerId: player.id, position, points, timeMs: Math.max(0, Number(body.timeMs) || 0) });
       await db.update(players).set({ finishPosition: position, lastSeenAt: sql`CURRENT_TIMESTAMP` }).where(eq(players.id, player.id));

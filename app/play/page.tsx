@@ -29,7 +29,9 @@ export default function PlayPage(){
   if(state.room.status==="waiting")return <main className="player-wait"><LobbyMusic/><header className="app-nav"><WobbleLogo compact/><span className="room-mini">ROOM <b>{code}</b></span></header><section><span className="eyebrow">BẠN ĐÃ VÀO PHÒNG!</span><h1>CHỜ HOST<br/><em>BẮT ĐẦU...</em></h1><Bean characterId={me.characterId} name={me.name} size="lg"/><button className={me.isReady?"ready-btn active":"ready-btn"} onClick={async()=>{if(!session)return;await roomAction(code,{action:"ready",ready:!me.isReady,playerId:session.playerId,playerToken:session.playerToken});refresh()}}>{me.isReady?"✓ ĐÃ SẴN SÀNG":"TÔI SẴN SÀNG!"}</button><p>{state.players.length}/{state.room.maxPlayers} tay đua đã tham gia</p></section></main>;
   const mode=getMapMode(state.room.currentMap);
   if(state.room.status==="racing"&&!finish&&!me.finishPosition)return <main className="play-shell"><RaceGame key={`${state.room.currentRound}-${state.room.currentMap}`} me={me} players={state.players} mapId={state.room.currentMap} round={state.room.currentRound} startedAt={state.room.updatedAt} onProgress={sendProgress} onFinish={sendFinish} onEliminate={sendEliminate}/></main>;
-  const ranked=[...state.players].sort((a,b)=>b.score-a.score);const myRank=ranked.findIndex(p=>p.id===me.id)+1;
+  // Overall rank is derived from the complete room scoreboard. Players with
+  // the same score share the same rank instead of being ordered arbitrarily.
+  const myRank=1+state.players.filter(player=>player.score>me.score).length;
   const roundResult=state.results.find(result=>result.roundNumber===state.room.currentRound&&result.playerId===me.id);
   const roundPosition=finish?.position??roundResult?.position??me.finishPosition;
   const roundPoints=finish?.points??roundResult?.points??0;
