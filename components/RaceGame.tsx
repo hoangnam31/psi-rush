@@ -731,7 +731,14 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
         // E / gamepad X is reserved for map interactables. Clearing it here
         // keeps the shared controller edge-triggered until an interactable is added.
         input.current.interact = false;
-        if (now - p.lastJump > 900 && p.mana < 100) p.mana = Math.min(100, p.mana + 8.5 * dt);
+        if (now - p.lastJump > 900 && p.mana < 100) {
+          // Regeneration accelerates as the tank fills: empty mana still
+          // creates a meaningful recovery window, while the final portion
+          // returns faster and keeps normal movement feeling responsive.
+          const manaRatio = p.mana / 100;
+          const regenerationPerSecond = 9 + 4.5 * Math.pow(manaRatio, 1.35);
+          p.mana = Math.min(100, p.mana + regenerationPerSecond * dt);
+        }
 
         // Block Storm obstacles should push the bean without taking control
         // away. Keep enough steering authority to slide across the push
