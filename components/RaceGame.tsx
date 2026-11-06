@@ -166,6 +166,32 @@ function buildCourse(id: string, courseWidth: number, playerCount: number) {
       { x: courseWidth * .18, y: 1160, w: 96, h: 96, kind: "bumper", color: "#f1fdff", phase: 0 },
       { x: courseWidth * .76, y: 1160, w: 96, h: 96, kind: "bumper", color: "#d8f9ff", phase: 1 },
     );
+
+    // Fill the long safe corridors with recognizable Ice Drift set pieces.
+    // Counter-rotating twin bars leave several viable lanes instead of
+    // blocking the whole road; the later pair spins faster near the finish.
+    [
+      { y: 2600, speed: .88, length: 205 },
+      { y: 7600, speed: 1.38, length: 235 },
+    ].forEach((set, index) => {
+      spinners.push(
+        { x: courseWidth * .34, y: set.y, len: set.length, speed: set.speed, phase: index * .7, color: "#f1fdff" },
+        { x: courseWidth * .66, y: set.y + 70, len: set.length, speed: -set.speed * 1.08, phase: 1.4 + index, color: "#58c6d8" },
+      );
+    });
+
+    // Alternating ice gates create a readable slalom between the moving
+    // bridge abysses while preserving a wide passage for crowded rooms.
+    [1900, 4900, 9120].forEach((y, index) => {
+      const gapWidth = Math.max(440, Math.min(760, courseWidth * .28));
+      const gapCenter = courseWidth * [0.34, 0.66, 0.46][index];
+      const gapLeft = Math.max(180, Math.min(courseWidth - gapWidth - 180, gapCenter - gapWidth / 2));
+      obstacles.push(
+        { x: 0, y, w: gapLeft, h: 78, kind: "block", color: index % 2 ? "#71dfff" : "#d8f9ff" },
+        { x: gapLeft + gapWidth, y, w: courseWidth - gapLeft - gapWidth, h: 78, kind: "block", color: index % 2 ? "#d8f9ff" : "#71dfff" },
+      );
+    });
+
     [3000, 6200].forEach((y, pitIndex) => {
       // Extend the abyss past both road edges so it cannot be bypassed by
       // hugging the outer collision boundary. The larger floes leave clear,
