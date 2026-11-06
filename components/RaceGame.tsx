@@ -31,15 +31,19 @@ type Pit = { x: number; y: number; w: number; h: number };
 type SpecialZone = { kind: "tiles" | "rings" | "arena" | "sweep"; x: number; y: number; w: number; h: number; phase: number };
 type RingPlatform = { x: number; y: number; r: number; speed: number; phase: number; moveSpeed: number; moveAmp: number };
 type BridgePlatform = { x: number; y: number; w: number; h: number; amp: number; speed: number; phase: number; color: string };
+type IceRiver = { x: number; y: number; w: number; h: number };
+type PolarBear = { x: number; y: number; r: number; amp: number; speed: number; phase: number };
 type SweepRect = { x: number; y: number; w: number; h: number; low: boolean; color: string; vx: number; vy: number };
 type LaserBeam = { x1: number; y1: number; x2: number; y2: number; vx: number; vy: number; color: string };
 type Particle = { x: number; y: number; vx: number; vy: number; life: number; color: string };
 type RemoteState = { x: number; y: number; targetX: number; targetY: number; vx: number; vy: number; targetAt: number };
 
 const COURSE = 10000;
+const ICE_COURSE = 11500;
 const START_LINE = 230;
 const PLAYER_R = 38;
 const DEFAULT_CHECKPOINTS = [80, 2500, 5000, 7500];
+const ICE_CHECKPOINTS = [80, 2300, 5700, 9000];
 // Each Neon Sky checkpoint sits on a solid recovery strip after a ring abyss
 // and before the next neon obstacle group.
 const NEON_SKY_CHECKPOINTS = [80, 2100, 4230, 6380, 8500];
@@ -51,6 +55,18 @@ const SURVIVAL_Y = 3900;
 const EDGE_SUPPORT = PLAYER_R * .68;
 const ICE_BRIDGE_SUPPORT = PLAYER_R * .92;
 const CAMERA_FOLLOW_SPEED = 13;
+const CHECKPOINT_SAFE_BEFORE = 70;
+const CHECKPOINT_SAFE_AFTER = 480;
+
+function courseLengthForMap(id: string) {
+  return id === "ice" ? ICE_COURSE : COURSE;
+}
+
+function checkpointsForMap(id: string) {
+  if (id === "sky") return NEON_SKY_CHECKPOINTS;
+  if (id === "ice") return ICE_CHECKPOINTS;
+  return DEFAULT_CHECKPOINTS;
+}
 
 function mapSeed(id: string) {
   return [...id].reduce((sum, char) => sum + char.charCodeAt(0), 0);
@@ -71,7 +87,7 @@ function tileRectsForZone(zone: SpecialZone) {
   }));
 }
 
-function buildCourse(id: string, courseWidth: number, playerCount: number) {
+function buildCourse(id: string, courseWidth: number, playerCount: number, courseLength: number, checkpoints: readonly number[]) {
   const seed = mapSeed(id);
   const colors = ["#ef7165", "#f2b63f", "#58c6d8", "#8bc895"];
   const obstacles: Obstacle[] = [];
@@ -79,6 +95,8 @@ function buildCourse(id: string, courseWidth: number, playerCount: number) {
   const pits: Pit[] = [];
   const bridgePits: Pit[] = [];
   const bridges: BridgePlatform[] = [];
+  const iceRivers: IceRiver[] = [];
+  const polarBears: PolarBear[] = [];
   const zones: SpecialZone[] = [];
   const survivalSize = survivalSizeForPlayers(playerCount);
   const survivalX = (courseWidth - survivalSize) / 2;
@@ -199,14 +217,34 @@ function buildCourse(id: string, courseWidth: number, playerCount: number) {
         color: row % 2 ? "#7ce9ff" : "#f1fdff",
       });
     });
+
+    // The final set piece extends Ice Drift beyond the old finish line. A
+    // full-width glacial river makes walking noticeably slower, while jumping
+    // preserves momentum. Polar bears cross the current as moving hazards.
+    const river = { x: 0, y: 9500, w: courseWidth, h: 1100 };
+    iceRivers.push(river);
+    for (let row = 0; row < 5; row++) polarBears.push({
+      x: courseWidth / 2,
+      y: river.y + 145 + row * 200,
+      r: 62,
+      amp: Math.max(260, courseWidth / 2 - 150),
+      speed: (row % 2 ? -1 : 1) * (.42 + row * .075),
+      phase: row * 1.17,
+    });
   }
-  const courseLimit = COURSE - FINISH_CLEARANCE;
+  const courseLimit = courseLength - FINISH_CLEARANCE;
   const overlapsBridgePit = (y: number, height: number) => bridgePits.some((pit) => y < pit.y + pit.h && y + height > pit.y);
+  const overlapsIceRiver = (y: number, height: number) => iceRivers.some((river) => y < river.y + river.h && y + height > river.y);
+  const overlapsCheckpointSafety = (y: number, height: number) => checkpoints.slice(1).some((checkpoint) =>
+    y < checkpoint + CHECKPOINT_SAFE_AFTER && y + height > checkpoint - CHECKPOINT_SAFE_BEFORE,
+  );
   return {
-    obstacles: obstacles.filter((obstacle) => obstacle.y + obstacle.h <= courseLimit && !overlapsBridgePit(obstacle.y, obstacle.h)),
-    spinners: spinners.filter((spinner) => spinner.y + spinner.len <= courseLimit && !overlapsBridgePit(spinner.y - spinner.len, spinner.len * 2)),
-    pits: pits.filter((pit) => pit.y + pit.h <= courseLimit && (bridgePits.includes(pit) || !overlapsBridgePit(pit.y, pit.h))),
-    bridges: bridges.filter((bridge) => bridge.y + bridge.h <= courseLimit),
+    obstacles: obstacles.filter((obstacle) => obstacle.y + obstacle.h <= courseLimit && !overlapsBridgePit(obstacle.y, obstacle.h) && !overlapsIceRiver(obstacle.y, obstacle.h) && !overlapsCheckpointSafety(obstacle.y, obstacle.h)),
+    spinners: spinners.filter((spinner) => spinner.y + spinner.len <= courseLimit && !overlapsBridgePit(spinner.y - spinner.len, spinner.len * 2) && !overlapsIceRiver(spinner.y - spinner.len, spinner.len * 2) && !overlapsCheckpointSafety(spinner.y - spinner.len, spinner.len * 2)),
+    pits: pits.filter((pit) => pit.y + pit.h <= courseLimit && (bridgePits.includes(pit) || !overlapsBridgePit(pit.y, pit.h)) && !overlapsIceRiver(pit.y, pit.h) && !overlapsCheckpointSafety(pit.y, pit.h)),
+    bridges: bridges.filter((bridge) => bridge.y + bridge.h <= courseLimit && !overlapsCheckpointSafety(bridge.y, bridge.h)),
+    iceRivers: iceRivers.filter((river) => river.y + river.h <= courseLimit && !overlapsCheckpointSafety(river.y, river.h)),
+    polarBears: polarBears.filter((bear) => bear.y + bear.r <= courseLimit && !overlapsCheckpointSafety(bear.y - bear.r, bear.r * 2)),
     zones: zones.filter((zone) => zone.y + zone.h <= courseLimit),
   };
 }
@@ -264,8 +302,9 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
     let renderScale = .6;
     const playerCount = Math.max(1, playersRef.current.length);
     const courseWidth = courseWidthForPlayers(playerCount);
-    const checkpoints = map.id === "sky" ? NEON_SKY_CHECKPOINTS : DEFAULT_CHECKPOINTS;
-    const { obstacles, spinners, pits, bridges, zones } = buildCourse(map.id, courseWidth, playerCount);
+    const courseLength = courseLengthForMap(map.id);
+    const checkpoints = checkpointsForMap(map.id);
+    const { obstacles, spinners, pits, bridges, iceRivers, polarBears, zones } = buildCourse(map.id, courseWidth, playerCount, courseLength, checkpoints);
     const orderedObstacles = [...obstacles].sort((a, b) => b.y - a.y);
     const orderedSpinners = [...spinners].sort((a, b) => b.y - a.y);
     const orderedPits = [...pits].sort((a, b) => b.y - a.y);
@@ -444,7 +483,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
         const otherSpawn = spawnFor(other.id);
         const waitingForFirstSync = isSurvival && other.progress < 1;
         const targetX = waitingForFirstSync ? otherSpawn.x : Number.isFinite(other.positionX) ? other.positionX : otherSpawn.x;
-        const targetY = waitingForFirstSync ? otherSpawn.y : other.progress / 100 * COURSE;
+        const targetY = waitingForFirstSync ? otherSpawn.y : other.progress / 100 * courseLength;
         let state = remoteStates.get(other.id);
         if (!state) {
           state = { x: targetX, y: targetY, targetX, targetY, vx: 0, vy: 0, targetAt: now };
@@ -470,7 +509,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       for (const other of playersRef.current) {
         if (other.id === me.id || other.progress >= 100 || other.finishPosition) continue;
         const remote = remoteStates.get(other.id);
-        const otherY = remote?.y ?? other.progress / 100 * COURSE;
+        const otherY = remote?.y ?? other.progress / 100 * courseLength;
         const otherX = remote?.x ?? other.positionX ?? 150 + hash(other.id) % (courseWidth - 300);
         let dx = p.x - otherX, dy = p.y - otherY;
         let distance = Math.hypot(dx, dy);
@@ -496,6 +535,14 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
 
     function bridgeX(bridge: BridgePlatform, time: number) {
       return bridge.x + Math.sin(time * bridge.speed + bridge.phase) * bridge.amp;
+    }
+
+    function polarBearX(bear: PolarBear, time: number) {
+      return bear.x + Math.sin(time * Math.abs(bear.speed) + bear.phase) * bear.amp * Math.sign(bear.speed);
+    }
+
+    function getIceRiverAtPlayer() {
+      return iceRivers.find((river) => p.x >= river.x && p.x <= river.x + river.w && p.y >= river.y && p.y <= river.y + river.h) ?? null;
     }
 
     function getSupportingBridge(time: number) {
@@ -646,7 +693,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       p.disintegrating = false; p.disintegrateTime = 0;
       p.mana = 100; p.lastJump = -Infinity; p.dashCd = 0; p.dashTime = 0;
       cameraX = p.x; cameraY = p.y;
-      progressCb.current(Math.min(99.8, p.y / COURSE * 100), p.x);
+      progressCb.current(Math.min(99.8, p.y / courseLength * 100), p.x);
       audio.respawn();
       burst(p.x, p.y, "#8df6ff", 20); showImpact("HỒI SINH · MANA ĐẦY!", now);
     }
@@ -744,8 +791,13 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
         // away. Keep enough steering authority to slide across the push
         // direction while preserving the collision's momentum.
         const control = p.stun > 0 ? (map.id === "sweep" ? .7 : .1) : 1;
-        const acceleration = 1280 * control * (.85 + physics.speedMultiplier * .15);
-        const maxSpeed = p.dashTime > 0 ? 920 * Math.max(.94, physics.speedMultiplier) : (map.id === "ice" ? 420 : 365) * physics.speedMultiplier;
+        const swimming = map.id === "ice" && p.z < 32 && Boolean(getIceRiverAtPlayer());
+        const acceleration = (swimming ? 620 : 1280) * control * (.85 + physics.speedMultiplier * .15);
+        const maxSpeed = swimming
+          ? (p.dashTime > 0 ? 235 : 145) * physics.speedMultiplier
+          : p.dashTime > 0
+            ? 920 * Math.max(.94, physics.speedMultiplier)
+            : (map.id === "ice" ? 420 : 365) * physics.speedMultiplier;
         p.vx += ix * acceleration * dt;
         p.vy += iy * acceleration * dt;
         // Apply stronger braking only after the stick/key is released. Active
@@ -788,6 +840,35 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
             const carry = Math.cos(raceSeconds * bridge.speed + bridge.phase) * bridge.amp * bridge.speed;
             p.x += carry * dt;
             p.vx += carry * dt * .3;
+          }
+        }
+
+        if (map.id === "ice") {
+          const river = getIceRiverAtPlayer();
+          if (river && p.z < 32) {
+            // Thick water drag makes swimming the deliberate slow route. A
+            // jump clears the drag immediately, rewarding rhythmic jumps.
+            const waterDrag = Math.pow(.16, dt);
+            p.vx *= waterDrag;
+            p.vy *= waterDrag;
+          }
+          if (river && p.z < 58 && p.hitCd <= 0) {
+            for (const bear of polarBears) {
+              const bearX = polarBearX(bear, raceSeconds);
+              const dx = p.x - bearX, dy = p.y - bear.y;
+              const distance = Math.hypot(dx, dy);
+              if (distance >= bear.r + PLAYER_R * .72) continue;
+              const nx = distance > .01 ? dx / distance : 1;
+              const ny = distance > .01 ? dy / distance : 0;
+              p.x = bearX + nx * (bear.r + PLAYER_R * .75 + 2);
+              p.y = bear.y + ny * (bear.r + PLAYER_R * .75 + 2);
+              p.vx += nx * 280 + Math.cos(raceSeconds * Math.abs(bear.speed) + bear.phase) * bear.amp * Math.abs(bear.speed) * .35;
+              p.vy = Math.max(p.vy + ny * 160, 210);
+              p.vz = Math.max(p.vz, 150);
+              p.hitCd = .38; p.hitTime = .25; shake = .38;
+              audio.collision(false); burst(p.x, p.y, "#e9fbff", 10); showImpact("NÉ GẤU BẮC CỰC!", now);
+              break;
+            }
           }
         }
 
@@ -862,7 +943,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       for (let i = particles.length - 1; i >= 0; i--) if (particles[i].life <= 0) particles.splice(i, 1);
       shake = Math.max(0, shake - dt * 3.4);
 
-      const progress = Math.max(0, Math.min(100, p.y / COURSE * 100));
+      const progress = Math.max(0, Math.min(100, p.y / courseLength * 100));
       const syncDelay = playersRef.current.length > 100 ? 2200 : playersRef.current.length > 50 ? 1500 : 800;
       if (now - lastSync > syncDelay) { lastSync = now; progressCb.current(progress, p.x); }
       const uiDelay = Math.min(viewportW, viewportH) <= 700 ? 160 : 100;
@@ -870,7 +951,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
         lastUi = now;
         setLocalProgress(progress); setDash(Math.max(0, (1 - p.dashCd / 3) * 100)); setMana(p.mana); setElapsed(Math.max(0, Date.now() - roundGoEpoch));
       }
-      if (!isSurvival && p.y >= COURSE && !finished) { finished = true; progressCb.current(100, p.x); finishCb.current(Math.max(0, Date.now() - roundGoEpoch)); }
+      if (!isSurvival && p.y >= courseLength && !finished) { finished = true; progressCb.current(100, p.x); finishCb.current(Math.max(0, Date.now() - roundGoEpoch)); }
     }
 
     function hash(value: string) {
@@ -906,6 +987,12 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
         const zoneEnd = sy(zone.y + zone.h);
         if (Math.max(zoneStart, zoneEnd) < -200 || Math.min(zoneStart, zoneEnd) > h + 200) continue;
         drawSpecialZone(ctx, zone, raceSeconds, sx, sy, perspective, now);
+      }
+
+      for (const river of iceRivers) {
+        const riverStart = sy(river.y), riverEnd = sy(river.y + river.h);
+        if (Math.max(riverStart, riverEnd) < -220 || Math.min(riverStart, riverEnd) > h + 220) continue;
+        drawIceRiver(ctx, river, raceSeconds, sx, sy, perspective);
       }
 
       for (const pit of orderedPits) {
@@ -958,6 +1045,11 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
         if (y < -350 || y > h + 350) continue;
         drawSpinner(ctx, spinner, raceSeconds, sx, sy, perspective);
       }
+      for (const bear of polarBears) {
+        const y = sy(bear.y);
+        if (y < -150 || y > h + 150) continue;
+        drawPolarBear(ctx, bear, polarBearX(bear, raceSeconds), raceSeconds, sx, sy, perspective);
+      }
 
       // Low walls stay under a jumping racer; tall walls are painted later as
       // foreground occluders.
@@ -970,7 +1062,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
         .filter((other) => other.id !== me.id && !other.finishPosition)
         .map((other) => {
           const remote = remoteStates.get(other.id);
-          return { ...other, worldY: remote?.y ?? other.progress / 100 * COURSE, worldX: remote?.x ?? other.positionX ?? 150 + hash(other.id) % (courseWidth - 300), remoteSpeed: Math.hypot(remote?.vx ?? 0, remote?.vy ?? 0) };
+          return { ...other, worldY: remote?.y ?? other.progress / 100 * courseLength, worldX: remote?.x ?? other.positionX ?? 150 + hash(other.id) % (courseWidth - 300), remoteSpeed: Math.hypot(remote?.vx ?? 0, remote?.vy ?? 0) };
         })
         .filter((other) => sy(other.worldY) > -90 && sy(other.worldY) < h + 100)
         .sort((a, b) => b.worldY - a.worldY);
@@ -1039,7 +1131,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       context.beginPath(); context.moveTo(topLeft + 8, 0); context.lineTo(bottomLeft + 8, h); context.moveTo(topRight - 8, 0); context.lineTo(bottomRight - 8, h); context.stroke();
 
       if (map.start === "line") drawCheckeredLine(context, START_LINE, "XUẤT PHÁT", sx, sy, perspective);
-      drawCheckeredLine(context, COURSE, "VỀ ĐÍCH", sx, sy, perspective);
+      drawCheckeredLine(context, courseLength, "VỀ ĐÍCH", sx, sy, perspective);
       for (let index = 1; index < checkpoints.length; index++) {
         drawCheckpointLine(context, checkpoints[index], index, sx, sy, perspective);
       }
@@ -1068,6 +1160,71 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       context.textAlign = "center"; context.fillStyle = "#fff8e9"; context.strokeStyle = "#14274e"; context.lineWidth = 4;
       context.strokeText(`CHECKPOINT ${index}`, (left + right) / 2, y - height - 5);
       context.fillText(`CHECKPOINT ${index}`, (left + right) / 2, y - height - 5);
+    }
+
+    function drawIceRiver(
+      context: CanvasRenderingContext2D, river: IceRiver, time: number,
+      sx: (x: number, y: number) => number, sy: (y: number) => number, perspective: (y: number) => number,
+    ) {
+      const nearY = sy(river.y), farY = sy(river.y + river.h);
+      const nearLeft = sx(river.x, river.y), nearRight = sx(river.x + river.w, river.y);
+      const farLeft = sx(river.x, river.y + river.h), farRight = sx(river.x + river.w, river.y + river.h);
+      const gradient = context.createLinearGradient(0, farY, 0, nearY);
+      gradient.addColorStop(0, "#0d8dc1");
+      gradient.addColorStop(.48, "#38c8e7");
+      gradient.addColorStop(1, "#087aa9");
+      context.save();
+      context.fillStyle = gradient;
+      context.beginPath(); context.moveTo(nearLeft, nearY); context.lineTo(nearRight, nearY); context.lineTo(farRight, farY); context.lineTo(farLeft, farY); context.closePath(); context.fill();
+
+      context.globalAlpha = .55;
+      context.strokeStyle = "#dffcff";
+      context.lineWidth = Math.max(2, 5 * perspective(river.y));
+      for (let row = 0; row < 8; row++) {
+        const worldY = river.y + 90 + row * 135;
+        const waveY = sy(worldY);
+        const left = sx(river.x, worldY), right = sx(river.x + river.w, worldY);
+        context.beginPath();
+        for (let step = 0; step <= 12; step++) {
+          const x = left + (right - left) * step / 12;
+          const y = waveY + Math.sin(time * 2.1 + row * .85 + step * .9) * 5;
+          if (step === 0) context.moveTo(x, y); else context.lineTo(x, y);
+        }
+        context.stroke();
+      }
+      context.globalAlpha = 1;
+      context.strokeStyle = "#ffffff"; context.lineWidth = Math.max(5, 13 * perspective(river.y));
+      context.beginPath(); context.moveTo(nearLeft, nearY); context.lineTo(nearRight, nearY); context.moveTo(farLeft, farY); context.lineTo(farRight, farY); context.stroke();
+      context.strokeStyle = "#66e7ff"; context.lineWidth = Math.max(2, 6 * perspective(river.y));
+      context.beginPath(); context.moveTo(nearLeft, nearY - 5); context.lineTo(nearRight, nearY - 5); context.moveTo(farLeft, farY + 5); context.lineTo(farRight, farY + 5); context.stroke();
+
+      const labelY = sy(river.y + river.h / 2);
+      context.font = `900 ${Math.max(12, 23 * renderScale)}px 'Arial Rounded MT Bold',system-ui`;
+      context.textAlign = "center"; context.fillStyle = "rgba(255,255,255,.92)"; context.strokeStyle = "#075d87"; context.lineWidth = 6;
+      context.strokeText("SÔNG BĂNG · NHẢY ĐỂ ĐI NHANH", (nearLeft + nearRight) / 2, labelY);
+      context.fillText("SÔNG BĂNG · NHẢY ĐỂ ĐI NHANH", (nearLeft + nearRight) / 2, labelY);
+      context.restore();
+    }
+
+    function drawPolarBear(
+      context: CanvasRenderingContext2D, bear: PolarBear, x: number, time: number,
+      sx: (x: number, y: number) => number, sy: (y: number) => number, perspective: (y: number) => number,
+    ) {
+      const scale = perspective(bear.y) * renderScale;
+      const cx = sx(x, bear.y), cy = sy(bear.y);
+      const direction = Math.cos(time * Math.abs(bear.speed) + bear.phase) * Math.sign(bear.speed) >= 0 ? 1 : -1;
+      const r = bear.r * scale;
+      context.save(); context.translate(cx, cy); context.scale(direction, 1);
+      context.fillStyle = "rgba(4,62,99,.3)"; context.beginPath(); context.ellipse(0, r * .42, r * 1.08, r * .42, 0, 0, Math.PI * 2); context.fill();
+      context.fillStyle = "#f4fcff"; context.strokeStyle = "#b7e9f2"; context.lineWidth = Math.max(2, 5 * scale);
+      context.beginPath(); context.ellipse(0, 0, r * .92, r * .62, 0, 0, Math.PI * 2); context.fill(); context.stroke();
+      context.beginPath(); context.arc(r * .62, -r * .18, r * .46, 0, Math.PI * 2); context.fill(); context.stroke();
+      context.beginPath(); context.arc(r * .43, -r * .53, r * .18, 0, Math.PI * 2); context.arc(r * .82, -r * .49, r * .18, 0, Math.PI * 2); context.fill(); context.stroke();
+      context.fillStyle = "#183453"; context.beginPath(); context.arc(r * .82, -r * .22, r * .1, 0, Math.PI * 2); context.arc(r * .55, -r * .31, r * .055, 0, Math.PI * 2); context.fill();
+      context.fillStyle = "#f2b63f"; context.fillRect(-r * .35, -r * .58, r * .2, r * 1.1);
+      context.fillStyle = "rgba(255,255,255,.78)";
+      for (let index = 0; index < 3; index++) { context.beginPath(); context.arc(-r * 1.05 - index * r * .22, r * (.15 + Math.sin(time * 4 + index) * .08), r * .13, 0, Math.PI * 2); context.fill(); }
+      context.restore();
     }
 
     function drawPit(
