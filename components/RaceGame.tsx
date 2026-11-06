@@ -346,7 +346,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       canvas!.height = Math.round(viewportH * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = "medium";
+      ctx.imageSmoothingQuality = "high";
     }
     resize();
     addEventListener("resize", resize);
@@ -887,7 +887,9 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
         : Math.max(mobileViewport ? .6 : .42, Math.min(mobileViewport ? 1.02 : .9, raceFit * (mobileViewport ? 1.45 : 1.08)));
       renderScale = baseScale;
       const playerScreenY = isSurvival ? h * .52 : h * (mobileViewport ? .64 : .72);
-      const runnerRadius = (mobileViewport ? 40 : 35) * baseScale;
+      // Keep the wider camera view while making mascots easier to identify on
+      // phones. This changes only their visual size, not map/camera scale.
+      const runnerRadius = (mobileViewport ? 48 : 42) * baseScale;
       const raceSeconds = Math.max(0, (Date.now() - roundGoEpoch) / 1000);
       const sweepHazards = getSweepRects(raceSeconds);
       const sy = (worldY: number) => playerScreenY - (worldY - cameraY) * baseScale;
