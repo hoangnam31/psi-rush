@@ -1296,11 +1296,9 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       context.fillStyle = "rgba(12,4,35,.3)"; context.beginPath(); context.ellipse(x + 4, y + radius * 1.2, radius * .92, radius * .27, 0, 0, Math.PI * 2); context.fill();
       context.translate(x, y + offsetY); context.rotate(angle); context.scale(scaleX, scaleY);
       const width = radius * 2.05, height = radius * 2.72, left = -width / 2, top = -height * .72;
-      context.beginPath(); context.roundRect(left, top, width, height, radius * .48); context.clip();
       if (image?.complete && image.naturalWidth > 0) context.drawImage(image, left, top, width, height);
       else { context.fillStyle = definition.accent; context.fillRect(left, top, width, height); context.fillStyle = "#fff"; context.font = `900 ${radius * .6}px system-ui`; context.textAlign = "center"; context.fillText(definition.displayName.slice(0, 1), 0, radius * .15); }
       context.restore();
-      context.save(); context.globalAlpha = alpha; context.strokeStyle = isMe ? "#f2b63f" : "#fff8e9"; context.lineWidth = Math.max(2, radius * .11); context.beginPath(); context.roundRect(x - width / 2, y + offsetY - height * .72, width, height, radius * .48); context.stroke(); context.restore();
       context.globalAlpha = alpha; context.font = `900 ${Math.max(9, radius * .36)}px 'Arial Rounded MT Bold',system-ui`; context.textAlign = "center"; context.strokeStyle = "#102044"; context.lineWidth = 5; context.strokeText(name, x, y + offsetY - height * .86); context.fillStyle = isMe ? "#ffd568" : "#fff8e9"; context.fillText(name, x, y + offsetY - height * .86); context.globalAlpha = 1;
     }
 

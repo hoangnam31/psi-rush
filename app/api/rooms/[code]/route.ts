@@ -28,6 +28,18 @@ async function getRoom(code: string) {
 
 type RoomRow = NonNullable<Awaited<ReturnType<typeof getRoom>>>;
 
+async function syncPlayerScore(db: ReturnType<typeof getDb>, roomId: string, playerId: string) {
+  await db.update(players).set({
+    score: sql<number>`coalesce((select sum("round_results"."points") from "round_results" where "round_results"."room_id" = ${roomId} and "round_results"."player_id" = ${players.id}), 0)`,
+  }).where(eq(players.id, playerId));
+}
+
+async function syncRoomScores(db: ReturnType<typeof getDb>, roomId: string) {
+  await db.update(players).set({
+    score: sql<number>`coalesce((select sum("round_results"."points") from "round_results" where "round_results"."room_id" = ${roomId} and "round_results"."player_id" = ${players.id}), 0)`,
+  }).where(eq(players.roomId, roomId));
+}
+
 async function getRoomPayload(room: RoomRow, isHost: boolean, includeResults = true) {
   const db = getDb();
   const roster = await retryDb(() => db.select({
@@ -114,17 +126,33 @@ export async function POST(request: Request, context: Context) {
           await db.update(rooms).set({ status: "racing", currentRound: nextRound, currentMap: pickMap(pool, room.currentMap, nextRound, room.id), updatedAt: sql`CURRENT_TIMESTAMP` }).where(eq(rooms.id, room.id));
         }
       } else if (action === "endRound") {
+        const roster = await db.select().from(players).where(eq(players.roomId, room.id));
+        const completed = await db.select().from(roundResults).where(and(eq(roundResults.roomId, room.id), eq(roundResults.roundNumber, room.currentRound)));
+        const completedIds = new Set(completed.map((result) => result.playerId));
+        const pendingResults: Array<typeof roundResults.$inferInsert> = [];
         if (getMapMode(room.currentMap) === "survival") {
-          const roster = await db.select().from(players).where(eq(players.roomId, room.id));
-          const completed = await db.select().from(roundResults).where(and(eq(roundResults.roomId, room.id), eq(roundResults.roundNumber, room.currentRound)));
-          const completedIds = new Set(completed.map((result) => result.playerId));
           const survivors = roster.filter((item) => !completedIds.has(item.id)).sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt));
           for (let index = 0; index < survivors.length; index++) {
             const survivor = survivors[index], position = index + 1, points = scoreForPosition(position);
-            await db.insert(roundResults).values({ roomId: room.id, roundNumber: room.currentRound, playerId: survivor.id, position, points, timeMs: 0 });
-            await db.update(players).set({ finishPosition: position, score: sql`${players.score} + ${points}` }).where(eq(players.id, survivor.id));
+            pendingResults.push({ roomId: room.id, roundNumber: room.currentRound, playerId: survivor.id, position, points, timeMs: 0 });
+          }
+        } else {
+          // When the host closes a race before everyone reaches the finish,
+          // rank every remaining racer by live progress so no round silently
+          // awards zero points to unfinished players.
+          const unfinished = roster
+            .filter((item) => !completedIds.has(item.id))
+            .sort((a, b) => b.progress - a.progress || a.joinedAt.localeCompare(b.joinedAt));
+          for (let index = 0; index < unfinished.length; index++) {
+            const racer = unfinished[index], position = completed.length + index + 1, points = scoreForPosition(position);
+            pendingResults.push({ roomId: room.id, roundNumber: room.currentRound, playerId: racer.id, position, points, timeMs: 0 });
           }
         }
+        if (pendingResults.length) await db.insert(roundResults).values(pendingResults);
+        await db.update(players).set({
+          finishPosition: sql<number>`(select "round_results"."position" from "round_results" where "round_results"."room_id" = ${room.id} and "round_results"."round_number" = ${room.currentRound} and "round_results"."player_id" = ${players.id} limit 1)`,
+        }).where(eq(players.roomId, room.id));
+        await syncRoomScores(db, room.id);
         const roundStatus = room.currentRound >= room.totalRounds ? "finished" : "results";
         await db.update(rooms).set({ status: roundStatus, updatedAt: sql`CURRENT_TIMESTAMP` }).where(eq(rooms.id, room.id));
       } else if (action === "finishGame") {
@@ -145,7 +173,8 @@ export async function POST(request: Request, context: Context) {
         const count = Number((await db.select({ count: sql<number>`count(*)` }).from(roundResults).where(and(eq(roundResults.roomId, room.id), eq(roundResults.roundNumber, room.currentRound))))[0]?.count ?? 0);
         const position = count + 1, points = scoreForPosition(position);
         await db.insert(roundResults).values({ roomId: room.id, roundNumber: room.currentRound, playerId: player.id, position, points, timeMs: Math.max(0, Number(body.timeMs) || 0) });
-        await db.update(players).set({ progress: 100, finishPosition: position, score: sql`${players.score} + ${points}`, lastSeenAt: sql`CURRENT_TIMESTAMP` }).where(eq(players.id, player.id));
+        await db.update(players).set({ progress: 100, finishPosition: position, lastSeenAt: sql`CURRENT_TIMESTAMP` }).where(eq(players.id, player.id));
+        await syncPlayerScore(db, room.id, player.id);
         return Response.json({ ok: true, position, points });
       }
     } else if (action === "eliminate") {
@@ -158,7 +187,8 @@ export async function POST(request: Request, context: Context) {
       const position = Math.max(2, roster.length - completed.length);
       const points = scoreForPosition(position);
       await db.insert(roundResults).values({ roomId: room.id, roundNumber: room.currentRound, playerId: player.id, position, points, timeMs: Math.max(0, Number(body.timeMs) || 0) });
-      await db.update(players).set({ finishPosition: position, score: sql`${players.score} + ${points}`, lastSeenAt: sql`CURRENT_TIMESTAMP` }).where(eq(players.id, player.id));
+      await db.update(players).set({ finishPosition: position, lastSeenAt: sql`CURRENT_TIMESTAMP` }).where(eq(players.id, player.id));
+      await syncPlayerScore(db, room.id, player.id);
 
       const completedIds = new Set([...completed.map((result) => result.playerId), player.id]);
       const survivors = roster.filter((item) => !completedIds.has(item.id));
@@ -166,7 +196,8 @@ export async function POST(request: Request, context: Context) {
         const winner = survivors[0];
         const winnerPoints = scoreForPosition(1);
         await db.insert(roundResults).values({ roomId: room.id, roundNumber: room.currentRound, playerId: winner.id, position: 1, points: winnerPoints, timeMs: Math.max(0, Number(body.timeMs) || 0) });
-        await db.update(players).set({ finishPosition: 1, score: sql`${players.score} + ${winnerPoints}`, lastSeenAt: sql`CURRENT_TIMESTAMP` }).where(eq(players.id, winner.id));
+        await db.update(players).set({ finishPosition: 1, lastSeenAt: sql`CURRENT_TIMESTAMP` }).where(eq(players.id, winner.id));
+        await syncPlayerScore(db, room.id, winner.id);
       }
       return Response.json({ ok: true, position, points });
     }

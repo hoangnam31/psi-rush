@@ -12,5 +12,6 @@ for (const character of characters) {
   if (!(character.baseSpeed > 0 && character.jumpImpulse > 0 && character.mass > 0)) throw new Error(`Invalid physics values for ${character.id}`);
   const filename = character.referenceImage.split("/").pop();
   await access(path.join(root, "public/characters", filename));
+  await access(path.join(root, "public/characters", `${character.id}_cutout.png`));
 }
-console.log(`Validated ${characters.length} PSI Rush characters and their gameplay assets.`);
+console.log(`Validated ${characters.length} PSI Rush characters, concept references and transparent gameplay cutouts.`);

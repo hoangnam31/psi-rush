@@ -26,7 +26,7 @@ export type CharacterDefinition = {
 
 export const CHARACTERS: CharacterDefinition[] = manifest.characters.map((character) => ({
   ...character,
-  image: `/characters/${character.referenceImage.split("/").pop()}`,
+  image: `/characters/${character.id}_cutout.png`,
   accent: ACCENTS[character.id] ?? "#8b5cf6",
 }));
 

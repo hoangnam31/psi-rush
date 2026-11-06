@@ -17,7 +17,7 @@ Mỗi người chơi lưu `characterId` trong PostgreSQL. Trường `color` cũ 
 
 ## Asset hiện tại và pipeline nâng cấp
 
-Các PNG được import là concept render có nền, không phải model rigged hay spritesheet. Bản này hiển thị chúng trong khung bo tròn và tạo animation bằng transform Canvas/CSS. Khi có sprite nền trong suốt, giữ nguyên `id` và tên file rồi thay ảnh trong `public/characters/`; nếu dùng animation sheet, mở rộng manifest bằng frame/state và thay phần render trong `drawMascot`, không cần sửa vật lý hay dữ liệu phòng.
+Các PNG gốc được import là concept render có nền, không phải model rigged hay spritesheet. Game dùng các bản cutout RGBA trong suốt mang hậu tố `_cutout.png` và tạo animation idle/run/jump/fall/land/dash/hit/respawn bằng transform Canvas/CSS, không còn khung ảnh. Khi có spritesheet hoặc model rigged thật, giữ nguyên `id`, mở rộng manifest bằng frame/state và thay phần render trong `drawMascot`; vật lý và dữ liệu phòng không cần thay đổi.
 
 ## Kiểm tra
 
