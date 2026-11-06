@@ -234,3 +234,23 @@ button,input,select{font-family:inherit}.eyebrow{display:inline-flex;align-items
 .spectator-track .race-player-label>i,
 .spectator-track .race-progress-marker>i,
 .leaderboard .character-dot{border:0!important;border-radius:0!important;background-color:transparent!important;background-position:center!important;background-repeat:no-repeat!important;background-size:contain!important;box-shadow:none!important}
+
+/* Corgi sprint loader: character bob, speed streaks and dust replace the old bouncing blob. */
+.loading-corgi{position:relative;width:190px;height:150px;margin:0 0 22px;isolation:isolate}
+.loading-corgi-runner{position:absolute;z-index:4;left:50%;top:0;width:126px;height:140px;object-fit:contain;filter:drop-shadow(0 10px 5px #07142d66);transform-origin:50% 88%;animation:corgi-sprint .34s ease-in-out infinite alternate}
+.corgi-ground{position:absolute;z-index:1;left:50%;bottom:3px;width:112px;height:18px;border-radius:50%;background:#07142d55;filter:blur(2px);transform:translateX(-50%);animation:corgi-ground-run .34s ease-in-out infinite alternate}
+.corgi-smoke{position:absolute;z-index:2;left:35px;bottom:18px;width:24px;height:24px;border-radius:50%;background:#eaf8ffcc;box-shadow:-17px 6px 0 -4px #d9eff8aa,13px 4px 0 -6px #fff;animation:corgi-smoke 1.05s ease-out infinite both}
+.corgi-smoke.smoke-two{left:117px;bottom:14px;width:19px;height:19px;animation-delay:-.36s;animation-name:corgi-smoke-right}
+.corgi-smoke.smoke-three{left:49px;bottom:8px;width:15px;height:15px;animation-delay:-.72s}
+.corgi-speed{position:absolute;z-index:0;top:47px;left:4px;width:48px;height:5px;border-radius:99px;background:linear-gradient(90deg,transparent,#bfefff);opacity:.7;animation:corgi-speed-line .72s ease-in-out infinite}
+.corgi-speed-two{top:78px;left:135px;width:42px;animation-delay:-.32s;transform:scaleX(-1)}
+.loading-corgi.paused .loading-corgi-runner{filter:grayscale(.45) drop-shadow(0 10px 5px #07142d66);animation:corgi-paused 1.8s ease-in-out infinite}
+.loading-corgi.paused .corgi-smoke,.loading-corgi.paused .corgi-speed{display:none}.loading-corgi.paused .corgi-ground{animation:none}
+@keyframes corgi-sprint{from{transform:translateX(-50%) translateY(1px) rotate(-3deg) scale(.98,1.02)}to{transform:translateX(-50%) translateY(-9px) rotate(3deg) scale(1.04,.96)}}
+@keyframes corgi-ground-run{from{opacity:.65;transform:translateX(-50%) scaleX(1)}to{opacity:.35;transform:translateX(-50%) scaleX(.72)}}
+@keyframes corgi-smoke{0%{opacity:0;transform:translate(20px,0) scale(.25)}18%{opacity:.9}100%{opacity:0;transform:translate(-62px,-25px) scale(1.55)}}
+@keyframes corgi-smoke-right{0%{opacity:0;transform:translate(-14px,0) scale(.25)}18%{opacity:.85}100%{opacity:0;transform:translate(58px,-23px) scale(1.45)}}
+@keyframes corgi-speed-line{0%,100%{opacity:.15;scale:.45 1}50%{opacity:.85;scale:1 1}}
+@keyframes corgi-paused{0%,100%{transform:translateX(-50%) translateY(0) rotate(-1deg)}50%{transform:translateX(-50%) translateY(-4px) rotate(1deg)}}
+@media(max-width:650px){.loading-corgi{width:165px;height:136px}.loading-corgi-runner{width:112px;height:128px}}
+@media(prefers-reduced-motion:reduce){.loading-corgi-runner,.corgi-ground,.corgi-smoke,.corgi-speed{animation:none!important}}

@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bean } from "../../components/Bean";
+import { LoadingCorgi } from "../../components/LoadingCorgi";
 import { LobbyMusic } from "../../components/LobbyMusic";
 import { RaceGame } from "../../components/RaceGame";
 import { WobbleLogo } from "../../components/WobbleLogo";
@@ -27,8 +28,8 @@ export default function PlayPage(){
   const sendFinish=useCallback(async(timeMs:number)=>{if(!session)return;try{const result=await roomAction<{position:number;points:number}>(code,{action:"finish",playerId:session.playerId,playerToken:session.playerToken,timeMs});setFinish(result);await refresh()}catch(e){setError(e instanceof Error?e.message:"Không ghi được kết quả")}},[code,session,refresh]);
   const sendEliminate=useCallback(async(timeMs:number)=>{if(!session)return;try{const result=await roomAction<{position:number;points:number}>(code,{action:"eliminate",playerId:session.playerId,playerToken:session.playerToken,timeMs});setFinish(result);await refresh()}catch(e){setError(e instanceof Error?e.message:"Không ghi được thứ hạng sinh tồn")}},[code,session,refresh]);
   useEffect(()=>{setFinish(null)},[state?.room.currentRound]);
-  if(wasKicked)return <main className="loading-shell kicked-shell"><div className="loader-bean"/><p>BẠN ĐÃ BỊ KICK VÌ CHƯA BẤM SẴN SÀNG</p><button className="secondary-action" onClick={()=>router.replace("/")}>VỀ TRANG CHỦ</button></main>;
-  if(!state||!me)return <main className="loading-shell"><div className="loader-bean"/><p>{error||"ĐANG KẾT NỐI VÀO PHÒNG..."}</p></main>;
+  if(wasKicked)return <main className="loading-shell kicked-shell"><LoadingCorgi paused/><p>BẠN ĐÃ BỊ KICK VÌ CHƯA BẤM SẴN SÀNG</p><button className="secondary-action" onClick={()=>router.replace("/")}>VỀ TRANG CHỦ</button></main>;
+  if(!state||!me)return <main className="loading-shell"><LoadingCorgi/><p>{error||"ĐANG KẾT NỐI VÀO PHÒNG..."}</p></main>;
   if(state.room.status==="waiting")return <main className="player-wait"><LobbyMusic/><header className="app-nav"><WobbleLogo compact/><span className="room-mini">ROOM <b>{code}</b></span></header><section><span className="eyebrow">BẠN ĐÃ VÀO PHÒNG!</span><h1>CHỜ HOST<br/><em>BẮT ĐẦU...</em></h1><Bean characterId={me.characterId} name={me.name} size="lg"/><button className={me.isReady?"ready-btn active":"ready-btn"} onClick={async()=>{if(!session)return;await roomAction(code,{action:"ready",ready:!me.isReady,playerId:session.playerId,playerToken:session.playerToken});refresh()}}>{me.isReady?"✓ ĐÃ SẴN SÀNG":"TÔI SẴN SÀNG!"}</button><p>{state.players.length}/{state.room.maxPlayers} tay đua đã tham gia</p></section></main>;
   const mode=getMapMode(state.room.currentMap);
   if(state.room.status==="racing"&&!finish&&!me.finishPosition)return <main className="play-shell"><RaceGame key={`${state.room.currentRound}-${state.room.currentMap}`} me={me} players={state.players} mapId={state.room.currentMap} round={state.room.currentRound} startedAt={state.room.updatedAt} onProgress={sendProgress} onFinish={sendFinish} onEliminate={sendEliminate}/></main>;

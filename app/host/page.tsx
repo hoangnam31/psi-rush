@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { WobbleLogo } from "../../components/WobbleLogo";
 import { Bean } from "../../components/Bean";
+import { LoadingCorgi } from "../../components/LoadingCorgi";
 import { RoomTrack } from "../../components/RoomTrack";
 import { getMapMode, MAPS } from "../../lib/game";
 import { getCharacter } from "../../lib/characters";
@@ -58,7 +59,7 @@ export default function HostPage() {
     </section>
   </main>;
 
-  if(!state) return <main className="loading-shell"><div className="loader-bean"/><p>ĐANG MỞ PHÒNG {session.code}...</p>{error&&<button onClick={leave}>Tạo phòng khác</button>}</main>;
+  if(!state) return <main className="loading-shell"><LoadingCorgi/><p>ĐANG MỞ PHÒNG {session.code}...</p>{error&&<button onClick={leave}>Tạo phòng khác</button>}</main>;
   const {room,players,results}=state;
   const currentResults=results.filter(r=>r.roundNumber===room.currentRound);
   const readyCount=players.filter(player=>player.isReady).length;
