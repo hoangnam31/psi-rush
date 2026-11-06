@@ -121,6 +121,16 @@ export async function POST(request: Request, context: Context) {
       if (hostToken !== room.hostToken) return Response.json({ error: "Không có quyền host" }, { status: 403 });
       const pool = JSON.parse(room.mapPool) as string[];
       if (action === "start" || action === "next") {
+        if (action === "start") {
+          if (room.status !== "waiting") return Response.json({ error: "Phòng không còn ở trạng thái chờ" }, { status: 409 });
+          const readyCount = Number((await retryDb(() => db.select({ count: sql<number>`count(*)` }).from(players).where(and(
+            eq(players.roomId, room.id), eq(players.isReady, true),
+          ))))[0]?.count ?? 0);
+          if (readyCount < 1) return Response.json({ error: "Cần ít nhất 1 người chơi sẵn sàng" }, { status: 409 });
+          // Readiness is the final admission gate. Anyone who has not
+          // confirmed before the host starts is removed from the room.
+          await db.delete(players).where(and(eq(players.roomId, room.id), eq(players.isReady, false)));
+        }
         const nextRound = action === "start" ? Math.max(1, room.currentRound) : room.currentRound + 1;
         if (nextRound > room.totalRounds) {
           await db.update(rooms).set({ status: "finished", updatedAt: sql`CURRENT_TIMESTAMP` }).where(eq(rooms.id, room.id));
@@ -171,7 +181,7 @@ export async function POST(request: Request, context: Context) {
         await db.update(rooms).set({ status: "finished", updatedAt: sql`CURRENT_TIMESTAMP` }).where(eq(rooms.id, room.id));
       } else {
         await db.delete(roundResults).where(eq(roundResults.roomId, room.id));
-        await db.update(players).set({ score: 0, progress: 0, positionX: 800, finishPosition: null }).where(eq(players.roomId, room.id));
+        await db.update(players).set({ score: 0, progress: 0, positionX: 800, finishPosition: null, isReady: false }).where(eq(players.roomId, room.id));
         await db.update(rooms).set({ status: "waiting", currentRound: 0, currentMap: null, updatedAt: sql`CURRENT_TIMESTAMP` }).where(eq(rooms.id, room.id));
       }
       return Response.json({ ok: true });
