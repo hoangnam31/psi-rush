@@ -206,3 +206,7 @@ button,input,select{font-family:inherit}.eyebrow{display:inline-flex;align-items
 }
 
 @media(prefers-reduced-motion:reduce){.map-briefing,.map-briefing-card,.map-briefing-timer>i b{animation:none!important}}
+
+/* Use one Vietnamese-complete font for typed names and placeholders. */
+.join-form input{font-family:"Trebuchet MS",Arial,sans-serif;font-weight:700}
+.join-form input::placeholder{font-family:"Trebuchet MS",Arial,sans-serif;font-style:normal;font-weight:600;letter-spacing:0;color:#9fb3d2;opacity:1}
