@@ -211,5 +211,8 @@ button,input,select{font-family:inherit}.eyebrow{display:inline-flex;align-items
 .join-form input{font-family:"Trebuchet MS",Arial,sans-serif;font-weight:700}
 .join-form input::placeholder{font-family:"Trebuchet MS",Arial,sans-serif;font-style:normal;font-weight:600;letter-spacing:0;color:#9fb3d2;opacity:1}
 
+/* Keep Vietnamese diacritics clear in the large two-line welcome/setup titles. */
+.landing-copy h1,.setup-intro h1{line-height:1.08;letter-spacing:-.025em}
+
 /* Prevent the generic top-positioned realtime chip from stretching vertically. */
 .race-progress-track>.realtime-chip{top:auto;left:14px;right:auto;width:max-content;height:auto;max-width:calc(100% - 28px);white-space:nowrap}
