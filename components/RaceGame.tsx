@@ -1530,11 +1530,76 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       context.fillStyle = "rgba(12,4,35,.3)"; context.beginPath(); context.ellipse(x + 4, y + radius * 1.15, radius * .92, radius * .27, 0, 0, Math.PI * 2); context.fill();
       context.translate(x, y + offsetY); context.rotate(angle); context.scale(scaleX, scaleY);
       const width = radius * 2.05, height = radius * 2.72, left = -width / 2, top = -height * .58;
-      if (image?.complete && image.naturalWidth > 0) context.drawImage(image, left, top, width, height);
+      if (image?.complete && image.naturalWidth > 0) drawArticulatedCharacter(context, image, left, top, width, height, state, time, hash(name));
       else { context.fillStyle = definition.accent; context.fillRect(left, top, width, height); context.fillStyle = "#fff"; context.font = `900 ${radius * .6}px system-ui`; context.textAlign = "center"; context.fillText(definition.displayName.slice(0, 1), 0, radius * .15); }
       context.restore();
       const labelY = y + offsetY + top - radius * .12;
       context.globalAlpha = alpha; context.font = `900 ${Math.max(9, radius * .36)}px 'Arial Rounded MT Bold',system-ui`; context.textAlign = "center"; context.strokeStyle = "#102044"; context.lineWidth = 5; context.strokeText(name, x, labelY); context.fillStyle = isMe ? "#ffd568" : "#fff8e9"; context.fillText(name, x, labelY); context.globalAlpha = 1;
+    }
+
+    function drawArticulatedCharacter(
+      context: CanvasRenderingContext2D, image: HTMLImageElement,
+      left: number, top: number, width: number, height: number,
+      state: CharacterVisualState, time: number, seed: number,
+    ) {
+      const animated = state === "locomotion" || state === "dash" || state === "jump" || state === "fall" || state === "land";
+      if (!animated) { context.drawImage(image, left, top, width, height); return; }
+
+      const sourceWidth = image.naturalWidth, sourceHeight = image.naturalHeight;
+      const legSourceTop = Math.round(sourceHeight * .72);
+      const bodySourceBottom = Math.round(sourceHeight * .86);
+      const sourceHalf = sourceWidth / 2;
+      const destinationLegTop = top + height * .72;
+      const destinationLegHeight = height * .28;
+      const phaseOffset = seed % 628 / 100;
+      const cadence = state === "dash" ? 15 : 10.5;
+      const stride = Math.sin(time * cadence + phaseOffset);
+      let leftAngle = stride * .17;
+      let rightAngle = -stride * .17;
+      let leftLift = Math.max(0, -stride) * height * .032;
+      let rightLift = Math.max(0, stride) * height * .032;
+
+      if (state === "jump") {
+        leftAngle = .2; rightAngle = -.2;
+        leftLift = rightLift = height * .065;
+      } else if (state === "fall") {
+        const flutter = Math.sin(time * 12 + phaseOffset) * .035;
+        leftAngle = -.14 + flutter; rightAngle = .14 - flutter;
+        leftLift = rightLift = height * .018;
+      } else if (state === "land") {
+        leftAngle = -.22; rightAngle = .22;
+        leftLift = rightLift = -height * .012;
+      } else if (state === "dash") {
+        leftAngle *= 1.25; rightAngle *= 1.25;
+        leftLift *= 1.3; rightLift *= 1.3;
+      }
+
+      const drawLeg = (side: -1 | 1, angle: number, lift: number) => {
+        const sourceX = side < 0 ? 0 : sourceHalf;
+        const destinationX = side < 0 ? left : left + width / 2;
+        const pivotX = left + width * (side < 0 ? .31 : .69);
+        const pivotY = top + height * .77;
+        context.save();
+        context.translate(pivotX, pivotY);
+        context.rotate(angle);
+        context.translate(-pivotX, -pivotY - lift);
+        context.drawImage(
+          image,
+          sourceX, legSourceTop, sourceHalf, sourceHeight - legSourceTop,
+          destinationX, destinationLegTop, width / 2, destinationLegHeight,
+        );
+        context.restore();
+      };
+
+      // Draw independently moving feet first, then overlap the torso. The
+      // overlap hides the crop seam and reads like a simple two-leg 2D rig.
+      drawLeg(-1, leftAngle, leftLift);
+      drawLeg(1, rightAngle, rightLift);
+      context.drawImage(
+        image,
+        0, 0, sourceWidth, bodySourceBottom,
+        left, top, width, height * (bodySourceBottom / sourceHeight),
+      );
     }
 
     function colorMix(color: string, mix: string, amount: number) {
