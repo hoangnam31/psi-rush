@@ -601,27 +601,33 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
     function getLaserBeams(time: number): LaserBeam[] {
       if (map.id !== "lava" || !survivalZone || time < 2.5) return [];
       const beams: LaserBeam[] = [];
-      const cadence = 3.6;
-      const wave = Math.floor((time - 2.5) / cadence);
+      const cadence = 4.2;
+      const currentWave = Math.floor((time - 2.5) / cadence);
       const centerX = survivalZone.x + survivalZone.w / 2, centerY = survivalZone.y + survivalZone.h / 2;
       const radius = Math.min(survivalZone.w, survivalZone.h) * .43;
-      const count = 1 + Math.min(2, Math.floor(time / 22));
-      for (let offset = 0; offset < count; offset++) {
-        const startAt = 2.5 + (wave - offset) * cadence;
-        const duration = Math.max(3, 5.8 - wave * .07);
-        const progress = (time - startAt) / duration;
-        if (progress < 0 || progress > 1) continue;
-        const vertical = time > 24 && (wave - offset) % 2 !== 0;
-        const reverse = (wave + offset) % 3 === 0;
-        const t = reverse ? 1 - progress : progress;
-        if (vertical) {
-          const x = centerX - radius + radius * 2 * t;
-          const chord = Math.sqrt(Math.max(0, radius * radius - (x - centerX) ** 2));
-          beams.push({ x1: x, y1: centerY - chord, x2: x, y2: centerY + chord, vx: (reverse ? -1 : 1) * radius * 2 / duration, vy: 0, color: offset % 2 ? "#ffe14a" : "#ff3d9a" });
-        } else {
-          const y = centerY - radius + radius * 2 * t;
-          const chord = Math.sqrt(Math.max(0, radius * radius - (y - centerY) ** 2));
-          beams.push({ x1: centerX - chord, y1: y, x2: centerX + chord, y2: y, vx: 0, vy: (reverse ? -1 : 1) * radius * 2 / duration, color: offset % 2 ? "#35dcff" : "#ff375f" });
+      const travelRadius = radius * 1.28;
+      // Inspect only recent waves. Extra beams are scheduled from each wave's
+      // own start time, so raising the difficulty never materializes an older
+      // laser halfway across the arena.
+      for (let wave = Math.max(0, currentWave - 2); wave <= currentWave; wave++) {
+        const waveStart = 2.5 + wave * cadence;
+        const beamCount = waveStart >= 42 ? 3 : waveStart >= 20 ? 2 : 1;
+        for (let variant = 0; variant < beamCount; variant++) {
+          const startAt = waveStart + variant * (beamCount === 3 ? 1.05 : 1.35);
+          const duration = Math.max(2.8, 4.8 - wave * .055);
+          const progress = (time - startAt) / duration;
+          if (progress < 0 || progress > 1) continue;
+          const vertical = waveStart >= 24 && (wave + variant) % 2 !== 0;
+          const reverse = (wave + variant) % 3 === 0;
+          const t = reverse ? 1 - progress : progress;
+          const velocity = (reverse ? -1 : 1) * travelRadius * 2 / duration;
+          if (vertical) {
+            const x = centerX - travelRadius + travelRadius * 2 * t;
+            beams.push({ x1: x, y1: centerY - radius * 1.08, x2: x, y2: centerY + radius * 1.08, vx: velocity, vy: 0, color: variant % 2 ? "#ffe14a" : "#ff3d9a" });
+          } else {
+            const y = centerY - travelRadius + travelRadius * 2 * t;
+            beams.push({ x1: centerX - radius * 1.08, y1: y, x2: centerX + radius * 1.08, y2: y, vx: 0, vy: velocity, color: variant % 2 ? "#35dcff" : "#ff375f" });
+          }
         }
       }
       return beams;
@@ -1365,13 +1371,14 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       if (state === "respawn") { const phase = 1 - Math.min(1, p.respawnTime / .7); scaleX = scaleY = .35 + phase * .65; }
 
       context.save(); context.globalAlpha = alpha;
-      context.fillStyle = "rgba(12,4,35,.3)"; context.beginPath(); context.ellipse(x + 4, y + radius * 1.2, radius * .92, radius * .27, 0, 0, Math.PI * 2); context.fill();
+      context.fillStyle = "rgba(12,4,35,.3)"; context.beginPath(); context.ellipse(x + 4, y + radius * 1.15, radius * .92, radius * .27, 0, 0, Math.PI * 2); context.fill();
       context.translate(x, y + offsetY); context.rotate(angle); context.scale(scaleX, scaleY);
-      const width = radius * 2.05, height = radius * 2.72, left = -width / 2, top = -height * .72;
+      const width = radius * 2.05, height = radius * 2.72, left = -width / 2, top = -height * .58;
       if (image?.complete && image.naturalWidth > 0) context.drawImage(image, left, top, width, height);
       else { context.fillStyle = definition.accent; context.fillRect(left, top, width, height); context.fillStyle = "#fff"; context.font = `900 ${radius * .6}px system-ui`; context.textAlign = "center"; context.fillText(definition.displayName.slice(0, 1), 0, radius * .15); }
       context.restore();
-      context.globalAlpha = alpha; context.font = `900 ${Math.max(9, radius * .36)}px 'Arial Rounded MT Bold',system-ui`; context.textAlign = "center"; context.strokeStyle = "#102044"; context.lineWidth = 5; context.strokeText(name, x, y + offsetY - height * .86); context.fillStyle = isMe ? "#ffd568" : "#fff8e9"; context.fillText(name, x, y + offsetY - height * .86); context.globalAlpha = 1;
+      const labelY = y + offsetY + top - radius * .12;
+      context.globalAlpha = alpha; context.font = `900 ${Math.max(9, radius * .36)}px 'Arial Rounded MT Bold',system-ui`; context.textAlign = "center"; context.strokeStyle = "#102044"; context.lineWidth = 5; context.strokeText(name, x, labelY); context.fillStyle = isMe ? "#ffd568" : "#fff8e9"; context.fillText(name, x, labelY); context.globalAlpha = 1;
     }
 
     function colorMix(color: string, mix: string, amount: number) {
