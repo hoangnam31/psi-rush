@@ -28,7 +28,10 @@ export function blockStormWaveAt(time: number, round: number): BlockStormWave | 
 
   let startAt = INTRO_SECONDS;
   for (let index = 0; index < 240; index++) {
-    const duration = Math.max(2.35, 5.9 - index * .085);
+    // Each wall still clears the arena before the next one appears, but its
+    // crossing time drops noticeably wave by wave. The previous .085-second
+    // step was too subtle to feel during a normal round.
+    const duration = Math.max(1.9, 5.8 - index * .24);
     const endAt = startAt + duration;
     if (time < startAt) return null;
     if (time <= endAt) {

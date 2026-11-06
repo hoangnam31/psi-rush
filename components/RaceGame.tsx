@@ -607,8 +607,21 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       for (const rect of getSweepRects(time)) {
         if (rect.low && p.z > 46) continue;
         if (resolveRect({ ...rect, kind: "mover" }, rect.x, now)) {
-          p.vx += rect.vx * .72; p.vy += rect.vy * .72;
-          p.vz = Math.max(p.vz, rect.low ? 115 : 185);
+          // Keep the bean on the leading face of the moving wall. Generic
+          // nearest-edge resolution can otherwise leave it inside/behind the
+          // wall, especially for bottom-to-top waves.
+          if (Math.abs(rect.vx) > Math.abs(rect.vy)) {
+            const leadingX = rect.vx > 0 ? rect.x + rect.w + PLAYER_R + 2 : rect.x - PLAYER_R - 2;
+            p.x = rect.vx > 0 ? Math.max(p.x, leadingX) : Math.min(p.x, leadingX);
+            p.vx = rect.vx > 0 ? Math.max(p.vx, rect.vx * .88) : Math.min(p.vx, rect.vx * .88);
+          } else {
+            const leadingY = rect.vy > 0 ? rect.y + rect.h + PLAYER_R + 2 : rect.y - PLAYER_R - 2;
+            p.y = rect.vy > 0 ? Math.max(p.y, leadingY) : Math.min(p.y, leadingY);
+            p.vy = rect.vy > 0 ? Math.max(p.vy, rect.vy * .88) : Math.min(p.vy, rect.vy * .88);
+          }
+          // Tall walls push horizontally across the floor instead of popping
+          // the bean above their artwork. Low walls can still trip the player.
+          if (rect.low) p.vz = Math.max(p.vz, 72);
         }
       }
       for (const laser of getLaserBeams(time)) {
@@ -869,6 +882,7 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       const playerScreenY = isSurvival ? h * .52 : h * (mobileViewport ? .64 : .72);
       const runnerRadius = (mobileViewport ? 40 : 35) * baseScale;
       const raceSeconds = Math.max(0, (Date.now() - roundGoEpoch) / 1000);
+      const sweepHazards = getSweepRects(raceSeconds);
       const sy = (worldY: number) => playerScreenY - (worldY - cameraY) * baseScale;
       const perspective = (_worldY: number) => 1;
       const sx = (worldX: number, _worldY: number) => w / 2 + (worldX - cameraX) * baseScale;
@@ -936,7 +950,9 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
         drawSpinner(ctx, spinner, raceSeconds, sx, sy, perspective);
       }
 
-      for (const hazard of getSweepRects(raceSeconds)) {
+      // Low walls stay under a jumping racer; tall walls are painted later as
+      // foreground occluders.
+      for (const hazard of sweepHazards) if (hazard.low) {
         drawBox(ctx, { ...hazard, kind: "mover" }, hazard.x, sx, sy, perspective);
       }
       for (const laser of getLaserBeams(raceSeconds)) drawLaser(ctx, laser, sx, sy, baseScale, now);
@@ -965,6 +981,12 @@ export function RaceGame({ me, players, mapId, round, startedAt, onProgress, onF
       if (!p.falling && !p.disintegrating) {
         const state: CharacterVisualState = p.respawnTime > 0 ? "respawn" : p.hitTime > 0 ? "hit" : p.dashTime > 0 ? "dash" : p.landTime > 0 ? "land" : p.z > 8 ? (p.vz >= 0 ? "jump" : "fall") : Math.hypot(p.vx, p.vy) > 35 ? "locomotion" : "idle";
         drawMascot(ctx, sx(p.x, p.y), sy(p.y) - p.z * baseScale, runnerRadius, me.characterId, me.name, 1, raceSeconds, true, state);
+      }
+      // Moving Block Storm walls are foreground objects. Drawing them after
+      // the racers makes their tall faces correctly occlude a bean on impact
+      // instead of making the bean look pasted above the obstacle.
+      for (const hazard of sweepHazards) if (!hazard.low) {
+        drawBox(ctx, { ...hazard, kind: "mover" }, hazard.x, sx, sy, perspective);
       }
       ctx.restore();
 
